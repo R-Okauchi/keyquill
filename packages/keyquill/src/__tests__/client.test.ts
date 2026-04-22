@@ -98,7 +98,7 @@ describe("Keyquill v2 SDK", () => {
 
       await vi.waitFor(() => expect(postedMessages.length).toBe(1));
       expect((postedMessages[0].payload as { type: string }).type).toBe("ping");
-      simulateResponse({ type: "pong", version: "0.2.0", protocol: 2 });
+      simulateResponse({ type: "pong", version: "0.3.0", protocol: 3 });
 
       expect(await promise).toBe(true);
     });
@@ -118,7 +118,7 @@ describe("Keyquill v2 SDK", () => {
           label: "Work",
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini",
-          isDefault: true,
+          isActive: true,
           keyHint: "sk-t...est1",
           status: "active" as const,
           createdAt: 1000,
@@ -130,7 +130,7 @@ describe("Keyquill v2 SDK", () => {
           label: "Personal",
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini",
-          isDefault: false,
+          isActive: false,
           keyHint: "sk-p...est2",
           status: "active" as const,
           createdAt: 2000,
@@ -147,7 +147,7 @@ describe("Keyquill v2 SDK", () => {
       const result = await promise;
       expect(result).toHaveLength(2);
       expect(result[0].label).toBe("Work");
-      expect(result[0].isDefault).toBe(true);
+      expect(result[0].isActive).toBe(true);
     });
   });
 

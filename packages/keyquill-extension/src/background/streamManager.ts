@@ -12,7 +12,7 @@ import type {
   ToolCallDelta,
   KeyRecord,
 } from "../shared/protocol.js";
-import { getKey, getDefaultKeyForProvider, getGlobalDefaultKey } from "./keyStore.js";
+import { getKey, getActiveKey } from "./keyStore.js";
 import { getBinding, touchBindingUsage } from "./bindingStore.js";
 import { buildProviderFetch, parseAnthropicCompletion } from "./providerFetch.js";
 
@@ -21,13 +21,16 @@ import { buildProviderFetch, parseAnthropicCompletion } from "./providerFetch.js
 /**
  * Resolve which stored KeyRecord should service this request.
  *
- * Priority:
- *   1. `request.keyId` — explicit SDK selection
- *   2. Per-origin binding (`bindings[origin].keyId`)
- *   3. `request.provider` → that provider's default key
- *   4. Global default (first isDefault, else first key overall)
+ * Priority (v3 active-key model):
+ *   1. `request.keyId` — explicit SDK selection (strongest signal)
+ *   2. Per-origin binding — persisted site choice from consent popup
+ *   3. Active key — the wallet's current selection, singleton across
+ *      the whole wallet
  *
- * Returns null when no viable key exists.
+ * `request.provider` is accepted for compatibility but no longer drives
+ * resolution (a site that needs a specific provider should pass keyId of
+ * a matching key). This eliminates the v2 ambiguity where the "global
+ * default" was the first per-provider default in array order.
  */
 export async function resolveKey(
   request: { keyId?: string; provider?: string },
@@ -51,11 +54,7 @@ export async function resolveKey(
     }
   }
 
-  if (request.provider && request.provider !== "auto") {
-    return await getDefaultKeyForProvider(request.provider);
-  }
-
-  return await getGlobalDefaultKey();
+  return await getActiveKey();
 }
 
 // ── Streaming ──────────────────────────────────────────

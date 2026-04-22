@@ -41,6 +41,7 @@ export type {
   ResponseFormat,
   // Key info
   KeySummary,
+  KeyDefaults,
   // Request params
   ChatParams,
   ChatStreamParams,

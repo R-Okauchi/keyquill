@@ -63,8 +63,22 @@ export type ResponseFormat =
 // ── Key Info ────────────────────────────────────────
 
 /**
+ * Per-key sampling defaults merged into each request by the extension.
+ * Explicit `ChatParams` values always override these.
+ */
+export interface KeyDefaults {
+  temperature?: number;
+  topP?: number;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+}
+
+/**
  * Safe projection of a stored key. Returned by `listKeys()`.
  * Never includes the raw `apiKey`.
+ *
+ * `isActive` is the wallet-wide single flag: at most one KeySummary in
+ * the returned array has `isActive: true`. When no keyId is passed and no
+ * per-origin binding matches, the extension uses the active key.
  */
 export interface KeySummary {
   keyId: string;
@@ -72,7 +86,8 @@ export interface KeySummary {
   label: string;
   baseUrl: string;
   defaultModel: string;
-  isDefault: boolean;
+  isActive: boolean;
+  defaults?: KeyDefaults;
   keyHint: string | null;
   status: "active" | "error";
   createdAt: number;
@@ -90,9 +105,13 @@ export interface ChatParams {
   keyId?: string;
 
   /**
-   * Provider hint (e.g. "openai", "anthropic"). If no `keyId`, used to pick
-   * the user's default key for that provider. Omit or "auto" to pick the
-   * user's global default.
+   * Provider hint (e.g. "openai", "anthropic"). Advisory only in v3 —
+   * the extension resolves by keyId → per-origin binding → active key,
+   * in that order. A site that must use a specific provider should pass
+   * the `keyId` of a matching key.
+   *
+   * @deprecated since v3: no longer drives key selection. Kept for
+   * backward compatibility with v2 callers.
    */
   provider?: string;
 
@@ -101,9 +120,22 @@ export interface ChatParams {
 
   // Generation parameters
   max_tokens?: number;
+  /**
+   * OpenAI reasoning-model budget (shared between reasoning and completion).
+   * Treated as an alias for `max_tokens` by non-reasoning providers.
+   */
+  max_completion_tokens?: number;
   temperature?: number;
   top_p?: number;
   stop?: string | string[];
+
+  /**
+   * Reasoning effort for models that support it (OpenAI o-series / GPT-5
+   * reasoning, Gemini 2.5+ thinking, Groq reasoning models). Forwarded
+   * verbatim to OpenAI-compatible providers and translated to
+   * `thinking: { budget_tokens }` for Anthropic's Messages API.
+   */
+  reasoning_effort?: "minimal" | "low" | "medium" | "high";
 
   // Tool calling
   tools?: Tool[];
@@ -199,4 +231,4 @@ export const ErrorCode = {
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 /** SDK's expected protocol version. Bumped on every breaking schema change. */
-export const SDK_PROTOCOL_VERSION = 2;
+export const SDK_PROTOCOL_VERSION = 3;

@@ -63,9 +63,11 @@ export type ResponseFormat =
 /**
  * Bumped every time the wire protocol changes in a breaking way.
  * v1: provider-keyed single-key storage (legacy; `ProviderRecord` based)
- * v2: keyId-keyed multi-key storage with per-origin bindings
+ * v2: keyId-keyed multi-key storage with per-provider defaults
+ * v3: active-key model — one wallet-global active key replaces per-provider
+ *     defaults (mirrors MetaMask account switching)
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // ── Key Record ─────────────────────────────────────────
 
@@ -74,14 +76,24 @@ export const PROTOCOL_VERSION = 2;
  * `keyId` is the stable identifier used by SDK and bindings to reference
  * a specific credential.
  */
+export interface KeyDefaults {
+  /** Sampling temperature 0.0 - 2.0. Omit to let the provider pick. */
+  temperature?: number;
+  /** Nucleus sampling 0.0 - 1.0. */
+  topP?: number;
+  /** Reasoning model effort level. Translated per-provider at fetch time. */
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+}
+
 export interface KeyRecord {
   keyId: string;           // UUID v4, immutable
-  provider: string;        // openai / anthropic / custom
+  provider: string;        // preset id: openai / anthropic / gemini / groq / ...
   label: string;           // required, user-facing name
   apiKey: string;
   baseUrl: string;
   defaultModel: string;
-  isDefault?: boolean;     // invariant: at most one per provider is true
+  isActive?: boolean;      // invariant: at most one key across the wallet is true
+  defaults?: KeyDefaults;  // per-key generation defaults merged by the request handler
   createdAt: number;
   updatedAt: number;
 }
@@ -95,7 +107,8 @@ export interface KeySummary {
   label: string;
   baseUrl: string;
   defaultModel: string;
-  isDefault: boolean;
+  isActive: boolean;
+  defaults?: KeyDefaults;
   keyHint: string | null;   // "sk-t...st12" mask, null if unavailable
   status: "active" | "error";
   createdAt: number;
@@ -126,12 +139,24 @@ export interface ChatParams {
   model?: string;
   messages: ChatMessage[];
   max_tokens?: number;
+  /**
+   * OpenAI reasoning-model budget (shared between reasoning and completion).
+   * Treated as an alias for `max_tokens` by non-reasoning providers.
+   */
+  max_completion_tokens?: number;
   temperature?: number;
   top_p?: number;
   stop?: string | string[];
   tools?: Tool[];
   tool_choice?: ToolChoice;
   response_format?: ResponseFormat;
+  /**
+   * Reasoning model effort level. Forwarded verbatim to OpenAI-compatible
+   * providers (OpenAI, Gemini OpenAI-compat, Groq reasoning, etc.) and
+   * translated to Anthropic's `thinking: { budget_tokens }` for the
+   * Anthropic Messages API.
+   */
+  reasoning_effort?: "minimal" | "low" | "medium" | "high";
 }
 
 // ── Incoming Requests (page/popup → extension) ─────────
@@ -148,7 +173,8 @@ export type IncomingRequest =
       apiKey: string;
       baseUrl: string;
       defaultModel: string;
-      isDefault?: boolean;
+      isActive?: boolean;
+      defaults?: KeyDefaults;
     }
   | {
       type: "updateKey";
@@ -157,9 +183,10 @@ export type IncomingRequest =
       baseUrl?: string;
       defaultModel?: string;
       apiKey?: string;
+      defaults?: KeyDefaults;
     }
   | { type: "deleteKey"; keyId: string }
-  | { type: "setDefault"; keyId: string }
+  | { type: "setActive"; keyId: string }
   | { type: "testKey"; keyId: string }
   | { type: "getBindings" }
   | { type: "setBinding"; origin: string; keyId: string }

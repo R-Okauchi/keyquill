@@ -31,8 +31,8 @@ function ConsentApp() {
       const r = res as OutgoingResponse;
       if (r.type === "keys") {
         setKeys(r.keys);
-        // Pre-select the global default (or first key)
-        const def = r.keys.find((k) => k.isDefault) ?? r.keys[0];
+        // Pre-select the wallet's active key (or fallback to the first key)
+        const def = r.keys.find((k) => k.isActive) ?? r.keys[0];
         if (def) setSelectedKeyId(def.keyId);
       }
     });
@@ -77,7 +77,7 @@ function ConsentApp() {
                 <div class="picker__label">
                   <span class="picker__name">
                     {k.label}
-                    {k.isDefault && <span class="picker__star" title="Default">⭐</span>}
+                    {k.isActive && <span class="picker__star" title="Active">⭐</span>}
                   </span>
                   <span class="picker__meta">{k.provider} · {k.keyHint}</span>
                 </div>
