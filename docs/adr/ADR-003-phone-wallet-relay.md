@@ -10,7 +10,7 @@ ADR-001 covers BYOK on PC browsers via an extension. Some users cannot or prefer
 
 ## Decision
 
-Ship `llmvault-relay`: a zero-knowledge WebSocket relay that pairs a browser client with a mobile wallet and forwards end-to-end encrypted AI requests.
+Ship `keyquill-relay`: a zero-knowledge WebSocket relay that pairs a browser client with a mobile wallet and forwards end-to-end encrypted AI requests.
 
 ### Pairing flow
 
@@ -24,7 +24,7 @@ Ship `llmvault-relay`: a zero-knowledge WebSocket relay that pairs a browser cli
 
 ```
 PC Browser                 Relay Server                Phone
- (llmvault-relay/client)  (llmvault-relay/server)     (llmvault-mobile)
+ (keyquill-relay/client)  (keyquill-relay/server)     (keyquill-mobile)
      │  WebSocket (E2E encrypted; server sees ciphertext only)   │
      ├────────────────────────────────────────────────────────────┤
      │                                                            │
@@ -51,10 +51,10 @@ PC Browser                 Relay Server                Phone
 
 ### Implementation split
 
-- [`llmvault-relay/client`](../../packages/llmvault-relay/src/client) — browser `PhoneRelayClient`.
-- [`llmvault-relay/server`](../../packages/llmvault-relay/src/server) — Cloudflare Durable Object (`RelaySessionDO`) + Hono route factory (`createRelayRoutes`).
-- Phone-side accept / encrypt / decrypt — native `RelaySessionHandler` in [`llmvault-mobile`](../../packages/llmvault-mobile) (Swift / Kotlin).
-- Wire-protocol types — [`llmvault-relay`](../../packages/llmvault-relay/src/types.ts) root entry re-exports types only, so both ends can type-check against the same schema.
+- [`keyquill-relay/client`](../../packages/keyquill-relay/src/client) — browser `PhoneRelayClient`.
+- [`keyquill-relay/server`](../../packages/keyquill-relay/src/server) — Cloudflare Durable Object (`RelaySessionDO`) + Hono route factory (`createRelayRoutes`).
+- Phone-side accept / encrypt / decrypt — native `RelaySessionHandler` in [`keyquill-mobile`](../../packages/keyquill-mobile) (Swift / Kotlin).
+- Wire-protocol types — [`keyquill-relay`](../../packages/keyquill-relay/src/types.ts) root entry re-exports types only, so both ends can type-check against the same schema.
 
 ## Consequences
 

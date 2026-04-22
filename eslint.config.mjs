@@ -11,8 +11,8 @@ export default tseslint.config(
       "**/dist-firefox/**",
       "**/node_modules/**",
       "**/coverage/**",
-      "packages/llmvault-mobile/ios/**",
-      "packages/llmvault-mobile/android/**",
+      "packages/keyquill-mobile/ios/**",
+      "packages/keyquill-mobile/android/**",
     ],
   },
 

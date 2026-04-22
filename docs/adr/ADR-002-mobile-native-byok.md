@@ -12,7 +12,7 @@ Goal: keep LLM API keys out of the JavaScript bridge, out of `SharedPreferences`
 
 ## Decision
 
-Ship `llmvault-mobile`, a Capacitor plugin with the following properties.
+Ship `keyquill-mobile`, a Capacitor plugin with the following properties.
 
 ### Storage
 
@@ -66,6 +66,6 @@ Biometric prompts on Android require a foreground `FragmentActivity` on the UI t
 
 ## Pointers
 
-- Plugin: [`packages/llmvault-mobile`](../../packages/llmvault-mobile)
-- iOS sources: `packages/llmvault-mobile/ios/Sources/SecureRelayPlugin/`
-- Android sources: `packages/llmvault-mobile/android/src/main/java/io/llmvault/mobile/`
+- Plugin: [`packages/keyquill-mobile`](../../packages/keyquill-mobile)
+- iOS sources: `packages/keyquill-mobile/ios/Sources/SecureRelayPlugin/`
+- Android sources: `packages/keyquill-mobile/android/src/main/java/io/keyquill/mobile/`

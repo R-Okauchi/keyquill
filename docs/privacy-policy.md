@@ -1,8 +1,8 @@
-# LLMVault Privacy Policy
+# Keyquill Privacy Policy
 
 **Last updated:** 2026-04-21
 
-LLMVault is a family of client-side libraries and a browser extension that lets you use your own LLM API keys without trusting any intermediary server. This policy explains what the LLMVault software does — and, more importantly, what it does **not** do — with your data.
+Keyquill is a family of client-side libraries and a browser extension that lets you use your own LLM API keys without trusting any intermediary server. This policy explains what the Keyquill software does — and, more importantly, what it does **not** do — with your data.
 
 ## What we collect
 
@@ -15,20 +15,20 @@ LLMVault is a family of client-side libraries and a browser extension that lets 
 
 ## Where your API keys live
 
-### Browser extension (`llmvault-extension`)
+### Browser extension (`keyquill-extension`)
 
 - Keys are stored in **`chrome.storage.session`** (Chrome) / `browser.storage.session` (Firefox).
 - This storage is **ephemeral**: keys are erased when the browser closes.
 - Keys are never synced across devices.
 - Keys are **inaccessible to web pages**. Only the extension's service worker can read them.
 
-### Mobile plugin (`llmvault-mobile`)
+### Mobile plugin (`keyquill-mobile`)
 
 - Keys are stored in **iOS Keychain** (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) / **Android Keystore**, hardware-backed where available.
 - **Biometric authentication** (Face ID / Touch ID / fingerprint) is required before each use.
 - Keys never leave the native layer of your app.
 
-### Phone Wallet Relay (`llmvault-relay`)
+### Phone Wallet Relay (`keyquill-relay`)
 
 - Used only when you pair a PC browser with your phone wallet.
 - All messages are **end-to-end encrypted** (ECDH P-256 + HKDF-SHA-256 + AES-GCM-256).
@@ -40,11 +40,11 @@ Only the LLM provider **you** configured (OpenAI, Anthropic, Gemini, etc.).
 
 - The browser extension makes HTTPS requests directly from its service worker to the provider API.
 - The mobile plugin makes HTTPS requests directly from native code to the provider API.
-- Nothing passes through any LLMVault-operated server.
+- Nothing passes through any Keyquill-operated server.
 
 ## Per-origin consent (browser extension)
 
-The first time a web app requests LLMVault access, the extension shows a consent popup asking you to approve that origin. Approved origins are stored in `chrome.storage.local` and can be revoked at any time from the extension popup.
+The first time a web app requests Keyquill access, the extension shows a consent popup asking you to approve that origin. Approved origins are stored in `chrome.storage.local` and can be revoked at any time from the extension popup.
 
 - Key registration (`registerKey`) and deletion (`deleteKey`) are **only** available from the extension popup. Web pages cannot register or delete keys.
 
@@ -68,8 +68,8 @@ The only third parties that receive any data are the LLM providers **you** choos
 
 ## Contact
 
-Report issues or questions via GitHub: <https://github.com/R-Okauchi/llmvault/issues>.
+Report issues or questions via GitHub: <https://github.com/R-Okauchi/keyquill/issues>.
 
 ## Changes to this policy
 
-Material changes will be reflected in the commit history at <https://github.com/R-Okauchi/llmvault> and noted in the `Last updated` date above.
+Material changes will be reflected in the commit history at <https://github.com/R-Okauchi/keyquill> and noted in the `Last updated` date above.

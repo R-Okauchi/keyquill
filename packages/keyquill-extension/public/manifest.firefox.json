@@ -1,0 +1,15 @@
+{
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "keyquill@app.keyquill.dev",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["authenticationInfo", "personalCommunications"]
+      }
+    }
+  },
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  }
+}

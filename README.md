@@ -1,4 +1,4 @@
-# LLMVault
+# Keyquill
 
 **Bring Your Own Key (BYOK) to any app — without trusting their server.**
 
@@ -8,21 +8,21 @@ A family of libraries that let users securely use their own LLM API keys from we
 
 | Package | Description | npm |
 |---|---|---|
-| [`llmvault`](./packages/llmvault) | Framework-agnostic SDK for web apps. Talks to the LLMVault browser extension via content-script message passing. | `llmvault` |
-| [`llmvault-extension`](./packages/llmvault-extension) | Chrome / Firefox MV3 extension. Stores keys in `chrome.storage.session` and makes CORS-free calls to LLM providers. Per-origin consent (MetaMask-style). | (Chrome Web Store / Firefox AMO) |
-| [`llmvault-mobile`](./packages/llmvault-mobile) | Capacitor plugin. Stores keys in iOS Keychain / Android Keystore, biometric-gated, calls providers directly from native code. | `llmvault-mobile` |
-| [`llmvault-relay`](./packages/llmvault-relay) | Phone Wallet Relay — zero-knowledge E2E encrypted WebSocket relay for pairing a desktop browser with a mobile wallet. Ships a browser client, a Cloudflare Durable Object, and a Hono route factory. | `llmvault-relay` |
+| [`keyquill`](./packages/keyquill) | Framework-agnostic SDK for web apps. Talks to the Keyquill browser extension via content-script message passing. | `keyquill` |
+| [`keyquill-extension`](./packages/keyquill-extension) | Chrome / Firefox MV3 extension. Stores keys in `chrome.storage.session` and makes CORS-free calls to LLM providers. Per-origin consent (MetaMask-style). | (Chrome Web Store / Firefox AMO) |
+| [`keyquill-mobile`](./packages/keyquill-mobile) | Capacitor plugin. Stores keys in iOS Keychain / Android Keystore, biometric-gated, calls providers directly from native code. | `keyquill-mobile` |
+| [`keyquill-relay`](./packages/keyquill-relay) | Phone Wallet Relay — zero-knowledge E2E encrypted WebSocket relay for pairing a desktop browser with a mobile wallet. Ships a browser client, a Cloudflare Durable Object, and a Hono route factory. | `keyquill-relay` |
 
 ## Quick start
 
 ### Web app + browser extension
 ```bash
-pnpm add llmvault
+pnpm add keyquill
 ```
-Install the LLMVault extension from the Chrome Web Store / Firefox AMO.
+Install the Keyquill extension from the Chrome Web Store / Firefox AMO.
 ```typescript
-import { LLMVault } from "llmvault";
-const vault = new LLMVault();
+import { Keyquill } from "keyquill";
+const vault = new Keyquill();
 if (await vault.isAvailable()) {
   await vault.connect();
   const result = await vault.chat({ model: "gpt-4o", messages: [{ role: "user", content: "Hello" }] });
@@ -31,13 +31,13 @@ if (await vault.isAvailable()) {
 
 ### Mobile app (Capacitor)
 ```bash
-pnpm add llmvault-mobile
+pnpm add keyquill-mobile
 npx cap sync
 ```
 
 ### Phone Wallet Relay (PC ↔ phone pairing)
 ```bash
-pnpm add llmvault-relay
+pnpm add keyquill-relay
 ```
 
 ## Security model
@@ -60,7 +60,7 @@ pnpm -r typecheck
 
 ## Releases
 
-Versions of the three published packages (`llmvault`, `llmvault-mobile`, `llmvault-relay`) are kept in lockstep via a [changesets](https://github.com/changesets/changesets) `fixed` group. See [`.changeset/config.json`](.changeset/config.json). `llmvault-extension` is `ignore`d here and distributed through browser add-on stores instead.
+Versions of the three published packages (`keyquill`, `keyquill-mobile`, `keyquill-relay`) are kept in lockstep via a [changesets](https://github.com/changesets/changesets) `fixed` group. See [`.changeset/config.json`](.changeset/config.json). `keyquill-extension` is `ignore`d here and distributed through browser add-on stores instead.
 
 Publishing is fully automated by [`changesets/action`](https://github.com/changesets/action) in [`.github/workflows/release.yml`](.github/workflows/release.yml):
 

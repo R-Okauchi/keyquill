@@ -2,10 +2,10 @@
   "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [["llmvault", "llmvault-mobile", "llmvault-relay"]],
+  "fixed": [["keyquill", "keyquill-mobile", "keyquill-relay"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["llmvault-extension"]
+  "ignore": ["keyquill-extension"]
 }

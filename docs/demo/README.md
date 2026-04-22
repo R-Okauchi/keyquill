@@ -1,10 +1,10 @@
-# LLMVault Demo
+# Keyquill Demo
 
-A minimal single-page demo that exercises the [`llmvault`](https://www.npmjs.com/package/llmvault) SDK against the LLMVault browser extension.
+A minimal single-page demo that exercises the [`keyquill`](https://www.npmjs.com/package/keyquill) SDK against the Keyquill browser extension.
 
 ## Live
 
-<https://r-okauchi.github.io/llmvault/demo/>
+<https://r-okauchi.github.io/keyquill/demo/>
 
 ## Run locally
 
@@ -20,7 +20,7 @@ python3 -m http.server 8080 --directory docs
 
 ## Flow
 
-1. Load the LLMVault extension (unpacked from `packages/llmvault-extension/dist-chrome/` until the Chrome Web Store listing is live).
+1. Load the Keyquill extension (unpacked from `packages/keyquill-extension/dist-chrome/` until the Chrome Web Store listing is live).
 2. Open the extension popup and register an OpenAI-compatible API key.
 3. Visit the demo page — it should say "Extension ready".
 4. Click **Connect extension** → approve the consent popup.
@@ -30,7 +30,7 @@ python3 -m http.server 8080 --directory docs
 
 ```html
 <script type="module">
-  import { LLMVault } from "https://esm.sh/llmvault@0.1.1";
+  import { Keyquill } from "https://esm.sh/keyquill@0.1.1";
 </script>
 ```
 

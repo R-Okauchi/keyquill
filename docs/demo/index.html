@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LLMVault Demo</title>
-    <meta name="description" content="Live demo of the LLMVault browser extension + SDK. Bring Your Own Key, no server." />
+    <title>Keyquill Demo</title>
+    <meta name="description" content="Live demo of the Keyquill browser extension + SDK. Bring Your Own Key, no server." />
     <style>
       :root {
         color-scheme: dark;
@@ -109,7 +109,7 @@
   <body>
     <div class="wrap">
       <header>
-        <h1>LLMVault Demo</h1>
+        <h1>Keyquill Demo</h1>
         <p class="subtitle">
           Your API key stays in the extension. This page never sees it. No server, no logging.
         </p>
@@ -121,10 +121,10 @@
           <p style="margin-top: 0">
             <strong>Step 1 — Install the extension.</strong> Until the Chrome Web Store listing is live,
             install from source:
-            <a href="https://github.com/R-Okauchi/llmvault#development">github.com/R-Okauchi/llmvault</a>.
+            <a href="https://github.com/R-Okauchi/keyquill#development">github.com/R-Okauchi/keyquill</a>.
           </p>
           <p>
-            <strong>Step 2 — Register an API key.</strong> Click the LLMVault icon in your browser
+            <strong>Step 2 — Register an API key.</strong> Click the Keyquill icon in your browser
             toolbar, add an OpenAI-compatible key. The key is stored in <code>chrome.storage.session</code>
             and is cleared when you close the browser.
           </p>
@@ -146,16 +146,16 @@
 
       <footer>
         <a href="..">Back to landing</a>
-        <a href="https://github.com/R-Okauchi/llmvault">Source</a>
+        <a href="https://github.com/R-Okauchi/keyquill">Source</a>
         <a href="../privacy-policy">Privacy policy</a>
         <a href="https://github.com/sponsors/R-Okauchi">Sponsor</a>
       </footer>
     </div>
 
     <script type="module">
-      import { LLMVault } from "https://esm.sh/llmvault@0.1.1";
+      import { Keyquill } from "https://esm.sh/keyquill@0.1.1";
 
-      const vault = new LLMVault();
+      const vault = new Keyquill();
       const statusEl = document.querySelector("#status");
       const preConnect = document.querySelector("#pre-connect");
       const chat = document.querySelector("#chat");

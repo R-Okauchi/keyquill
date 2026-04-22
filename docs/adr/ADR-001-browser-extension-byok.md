@@ -16,7 +16,7 @@ A browser extension runs in a separate execution context from the page, has its 
 
 ## Decision
 
-Ship a Manifest V3 extension (`llmvault-extension`) plus a framework-agnostic SDK (`llmvault`).
+Ship a Manifest V3 extension (`keyquill-extension`) plus a framework-agnostic SDK (`keyquill`).
 
 ### Key storage
 
@@ -35,7 +35,7 @@ The SDK never touches `chrome.*` APIs directly. The content script is the only b
 
 ### Consent model
 
-First call from an origin opens a consent popup ("Allow `example.com` to use LLMVault?"). Approval is stored in `chrome.storage.local`. Users can revoke any origin from the popup.
+First call from an origin opens a consent popup ("Allow `example.com` to use Keyquill?"). Approval is stored in `chrome.storage.local`. Users can revoke any origin from the popup.
 
 ### Privileged operations
 
@@ -65,6 +65,6 @@ Negative:
 
 ## Pointers
 
-- SDK: [`packages/llmvault`](../../packages/llmvault)
-- Extension: [`packages/llmvault-extension`](../../packages/llmvault-extension)
-- Wire protocol: [`packages/llmvault-extension/src/shared/protocol.ts`](../../packages/llmvault-extension/src/shared/protocol.ts)
+- SDK: [`packages/keyquill`](../../packages/keyquill)
+- Extension: [`packages/keyquill-extension`](../../packages/keyquill-extension)
+- Wire protocol: [`packages/keyquill-extension/src/shared/protocol.ts`](../../packages/keyquill-extension/src/shared/protocol.ts)

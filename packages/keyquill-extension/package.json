@@ -1,0 +1,29 @@
+{
+  "name": "keyquill-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Keyquill browser extension — Manifest V3 BYOK wallet for Chrome and Firefox. Distributed via Chrome Web Store and Firefox AMO; not published to npm.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite build --watch",
+    "dev:firefox": "BROWSER_TARGET=firefox vite build --watch",
+    "build": "vite build",
+    "build:firefox": "BROWSER_TARGET=firefox vite build",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "zip:chrome": "pnpm build && cd dist-chrome && zip -r ../keyquill-extension-chrome.zip . -x '*.DS_Store' -x '__MACOSX*'",
+    "zip:firefox": "pnpm build:firefox && cd dist-firefox && zip -r ../keyquill-extension-firefox.zip . -x '*.DS_Store' -x '__MACOSX*'",
+    "sign:firefox": "web-ext sign --source-dir=dist-firefox --api-key=$WEB_EXT_API_KEY --api-secret=$WEB_EXT_API_SECRET --channel=listed"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.6",
+    "@types/chrome": "^0.1.39",
+    "preact": "^10.26.6",
+    "typescript": "^5.8.3",
+    "vite": "^6.4.1",
+    "vitest": "^3.2.1",
+    "web-ext": "^10.1.0"
+  }
+}

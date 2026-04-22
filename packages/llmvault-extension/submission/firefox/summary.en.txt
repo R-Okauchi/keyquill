@@ -1,1 +1,0 @@
-Bring your own LLM API key to any web app — without trusting their server. LLMVault stores your OpenAI / Anthropic / Gemini key inside the extension and lets approved web apps use it via per-origin consent. No server, no telemetry, no tracking.

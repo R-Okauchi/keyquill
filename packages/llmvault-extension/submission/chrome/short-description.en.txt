@@ -1,1 +1,0 @@
-Your LLM API key, your control. LLMVault lets any web app use your own key — no server, no tracking, per-origin consent.

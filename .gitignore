@@ -7,10 +7,10 @@ coverage/
 .DS_Store
 
 # Capacitor plugin build artifacts
-packages/llmvault-mobile/android/build/
-packages/llmvault-mobile/android/.gradle/
-packages/llmvault-mobile/ios/build/
-packages/llmvault-mobile/ios/Pods/
+packages/keyquill-mobile/android/build/
+packages/keyquill-mobile/android/.gradle/
+packages/keyquill-mobile/ios/build/
+packages/keyquill-mobile/ios/Pods/
 
 # Local editor / env
 .env
