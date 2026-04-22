@@ -15,6 +15,23 @@ export interface ProviderFetchParams {
 
 type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 
+/**
+ * Detect OpenAI reasoning-family models. These require `max_completion_tokens`
+ * and REJECT `max_tokens` with a 400 error. Pattern matches real OpenAI
+ * model names in production as of 2026-04:
+ *
+ *   - o-series (API-only since Feb 2026): o1, o1-mini, o3, o3-mini, o4-mini, o3-pro
+ *   - GPT-5 family (every active ChatGPT model in 2026): gpt-5, gpt-5-mini,
+ *     gpt-5.2, gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-thinking,
+ *     gpt-5.4-pro
+ *
+ * Legacy models (gpt-4, gpt-4o, gpt-4.1, gpt-3.5-turbo) still accept
+ * `max_tokens` and are NOT matched.
+ */
+export function isOpenAIReasoningModel(model: string): boolean {
+  return /^(o\d+|gpt-5)/i.test(model);
+}
+
 interface NormalizedParams {
   model: string;
   messages: ChatMessage[];
@@ -88,11 +105,17 @@ function buildOpenAiPassthrough(
   const body: Record<string, unknown> = {
     model: params.model,
     messages: params.messages,
-    max_tokens: params.max_tokens,
     stream,
   };
-  if (params.max_completion_tokens !== undefined) {
-    body.max_completion_tokens = params.max_completion_tokens;
+  // Reasoning-family models reject `max_tokens` and require
+  // `max_completion_tokens`. Legacy models accept `max_tokens`.
+  if (isOpenAIReasoningModel(params.model)) {
+    body.max_completion_tokens = params.max_completion_tokens ?? params.max_tokens;
+  } else {
+    body.max_tokens = params.max_tokens;
+    if (params.max_completion_tokens !== undefined) {
+      body.max_completion_tokens = params.max_completion_tokens;
+    }
   }
   if (params.temperature !== undefined) body.temperature = params.temperature;
   if (params.top_p !== undefined) body.top_p = params.top_p;
