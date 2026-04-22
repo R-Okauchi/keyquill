@@ -30,7 +30,7 @@ python3 -m http.server 8080 --directory docs
 
 ```html
 <script type="module">
-  import { Keyquill } from "https://esm.sh/keyquill@0.1.1";
+  import { Keyquill } from "https://esm.sh/keyquill@0.1.0";
 </script>
 ```
 
