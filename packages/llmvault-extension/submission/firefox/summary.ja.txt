@@ -1,0 +1,1 @@
+LLM API キーを拡張機能だけに保持して、どんな Web アプリからでも安全に使えるようにします。OpenAI / Anthropic / Gemini のキーは ephemeral な session storage に保存、承認済みオリジンだけがアクセス可能。サーバー経由なし、トラッキングなし、ゼロトラスト。

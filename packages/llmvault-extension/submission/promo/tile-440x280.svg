@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 280" width="440" height="280">
+  <title>LLMVault — Your LLM key, your control</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <radialGradient id="face" cx="0.4" cy="0.35" r="0.85">
+      <stop offset="0%"  stop-color="#f1f5f9"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="440" height="280" fill="url(#bg)"/>
+
+  <!-- Left: safe-dial icon at 128px, centered vertically -->
+  <g transform="translate(40, 76)">
+    <!-- T-handle (behind dial) -->
+    <g fill="#e0e7ff">
+      <rect x="82" y="59" width="32" height="10" rx="3"/>
+      <rect x="106" y="49" width="10" height="30" rx="3"/>
+    </g>
+    <!-- Dial face -->
+    <circle cx="58" cy="64" r="36" fill="url(#face)" stroke="#475569" stroke-width="3"/>
+    <!-- Ticks -->
+    <g stroke="#334155" stroke-width="3" stroke-linecap="round">
+      <line x1="58" y1="32" x2="58" y2="38"/>
+      <line x1="58" y1="90" x2="58" y2="96"/>
+      <line x1="26" y1="64" x2="32" y2="64"/>
+      <line x1="84" y1="64" x2="90" y2="64"/>
+      <line x1="36" y1="42" x2="40" y2="46"/>
+      <line x1="80" y1="42" x2="76" y2="46"/>
+      <line x1="36" y1="86" x2="40" y2="82"/>
+      <line x1="80" y1="86" x2="76" y2="82"/>
+    </g>
+    <!-- Red indicator -->
+    <path d="M55 26 L61 26 L58 34 Z" fill="#ef4444"/>
+    <!-- Center pin -->
+    <circle cx="58" cy="64" r="7" fill="#1e293b"/>
+    <circle cx="58" cy="64" r="3" fill="#94a3b8"/>
+  </g>
+
+  <!-- Right: text block -->
+  <g font-family="-apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+    <text x="200" y="110" fill="#f1f5f9" font-size="40" font-weight="700" letter-spacing="-0.5">LLMVault</text>
+    <text x="200" y="150" fill="#818cf8" font-size="17" font-weight="500">Your LLM key, your control.</text>
+    <text x="200" y="178" fill="#cbd5e1" font-size="13" font-weight="400">Bring your own key. No server.</text>
+    <text x="200" y="196" fill="#cbd5e1" font-size="13" font-weight="400">Per-origin consent. Zero telemetry.</text>
+    <text x="200" y="232" fill="#64748b" font-size="11" font-weight="400">github.com/R-Okauchi/llmvault</text>
+  </g>
+</svg>

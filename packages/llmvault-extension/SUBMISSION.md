@@ -2,41 +2,18 @@
 
 Steps for publishing `llmvault-extension` to the Chrome Web Store and Firefox AMO.
 
-## Before the first submission
+Listing copy (English + Japanese), privacy documents, and the promo tile all live under [`submission/`](./submission/) as drop-in assets. Screenshots go in [`submission/screenshots/`](./submission/screenshots/).
 
-### 1. Real logo
+## Pre-submission checklist
 
-- Replace `public/icons/logo.svg` with the final LLMVault logo SVG.
-- Install ImageMagick: `brew install imagemagick`.
-- Run `./scripts/gen-icons.sh` from the repo root to regenerate the 16 / 32 / 48 / 128 px PNGs.
+- [x] **Privacy policy URL live** — <https://r-okauchi.github.io/llmvault/privacy-policy>
+- [x] **Promo tile 440×280** — `submission/promo/tile-440x280.png` (regenerate via `npx @resvg/resvg-js-cli --fit-width 440 submission/promo/tile-440x280.svg submission/promo/tile-440x280.png`)
+- [x] **Listing copy drafted** — English + Japanese under `submission/chrome/` and `submission/firefox/`
+- [x] **Extension icons** — `public/icons/icon-{16,32,48,128}.png` (regenerate via `scripts/gen-icons.sh` from `public/icons/logo.svg`)
+- [ ] **Screenshots 1280×800 × 2-3** — capture into `submission/screenshots/` (see README inside)
+- [ ] **Real logo** — current `public/icons/logo.svg` is a placeholder safe-dial. Replace before Public release if a branded logo is available.
 
-The current committed PNGs are 1×1 transparent placeholders — stores will reject them.
-
-### 2. Listing assets
-
-Chrome Web Store requires:
-- **128×128 icon** (the `icon-128.png` file).
-- At least one **1280×800** or **640×400** screenshot (recommend 2–3).
-- A **440×280** promo tile (small).
-- A **short description** (≤ 132 chars).
-- A **detailed description** (≤ 16 000 chars). Draft in `docs/store-listing.md` (to add).
-
-Firefox AMO requires:
-- **128×128 icon** and **64×64 icon**.
-- At least one screenshot.
-- **Short summary** (≤ 250 chars).
-- **Detailed description** (markdown-ish).
-
-### 3. Privacy policy URL
-
-Publish `docs/privacy-policy.md` via GitHub Pages:
-
-1. In the GitHub repo settings, enable Pages (source: `main` branch, `docs/` folder or root).
-2. Verify the URL resolves:
-   - `https://r-okauchi.github.io/llmvault/privacy-policy/`
-3. Use this URL in both Chrome and Firefox submission forms.
-
-### 4. Firefox `gecko.id`
+## Firefox `gecko.id`
 
 Current value: `llmvault@app.llmvault.dev` (in `public/manifest.firefox.json`).
 
@@ -56,20 +33,16 @@ pnpm --filter llmvault-extension zip:firefox   # llmvault-extension-firefox.zip
 
 ## Chrome Web Store submission
 
-1. Register at <https://chrome.google.com/webstore/devconsole> ($5 one-time developer fee).
+1. Register at <https://chrome.google.com/webstore/devconsole> ($5 one-time developer fee; identity verification may be required).
 2. **New item** → upload `llmvault-extension-chrome.zip`.
-3. Fill in:
-   - Category: `Productivity` (or `Developer Tools`).
-   - Privacy policy URL: from step 3 above.
-   - Permissions justification for `host_permissions` / `content_scripts` on `http://*/*` + `https://*/*`:
-     > LLMVault is a BYOK wallet SDK. Any web app can embed the LLMVault SDK and call the extension via a content-script bridge. Because the set of consuming apps is not known in advance, content-script injection on all HTTP/HTTPS origins is necessary. Per-origin consent is enforced by the extension itself — no origin can call the extension without the user's explicit approval via a consent popup.
-4. Distribution: start with **Unlisted** for internal testing; flip to **Public** after a validation round.
-5. Submit for review. Typical turnaround: 1–3 business days.
+3. Use [`submission/README.md`](./submission/README.md) as the paste-order guide. All listing fields have pre-drafted copy in `submission/chrome/`.
+4. Visibility: **Unlisted** initially. After a few days of QA with the Unlisted URL, flip to **Public**.
+5. Submit for review. Typical turnaround: 1-3 business days for first submissions.
 
 ## Firefox AMO submission
 
 1. Register at <https://addons.mozilla.org/developers/>.
-2. Request API credentials (JWT issuer + secret) from the **Manage API Keys** page.
+2. Request API credentials (JWT issuer + secret) from **Manage API Keys**.
 3. Export to your shell:
    ```bash
    export WEB_EXT_API_KEY=user:...
@@ -79,20 +52,21 @@ pnpm --filter llmvault-extension zip:firefox   # llmvault-extension-firefox.zip
    ```bash
    pnpm --filter llmvault-extension sign:firefox
    ```
-   This uses `web-ext sign --channel=listed`, which submits the signed build to AMO for review.
-5. In the AMO dashboard, fill in the listing metadata (summary, description, screenshots, privacy policy URL, categories).
-6. Review typical turnaround: 1–7 days.
+   `web-ext sign --channel=listed` submits the signed build to AMO for review.
+5. In the AMO dashboard, fill in the listing metadata using [`submission/firefox/`](./submission/firefox/) as paste source.
+6. If AMO reviewers ask for source code, either link <https://github.com/R-Okauchi/llmvault> or upload a zip of the source at the tag corresponding to this release.
 
 ## After approval
 
 - Update the **Install** section of the root [`README.md`](../../README.md) with the real Chrome Web Store / AMO URLs.
 - Update the package [`README.md`](./README.md) `[Chrome Web Store link — coming soon]` / `[Firefox Add-ons link — coming soon]` placeholders.
-- Tag the release in `llmvault` monorepo: `extension-v0.3.0`.
+- Update [`docs/index.md`](../../docs/index.md) similarly.
+- Tag the extension release as `llmvault-extension-v<version>` for source-zip provenance.
 
 ## Update flow for subsequent releases
 
-1. Bump version in `public/manifest.json` (must be incremented for each upload).
-2. Create a changeset for the `llmvault-extension` package.
-3. Run the submission commands above.
-4. Chrome: upload the new zip to the existing listing → submit for review.
-5. Firefox: `pnpm sign:firefox` handles it automatically.
+1. Bump `version` in `public/manifest.json` (must be incremented for each upload).
+2. `pnpm changeset` to record the change (extension is in the `ignore` list, so this only touches its own CHANGELOG, not npm publication).
+3. `pnpm --filter llmvault-extension build && zip:chrome && zip:firefox`.
+4. Chrome: upload the new zip to the existing listing → submit.
+5. Firefox: `pnpm --filter llmvault-extension sign:firefox` handles upload + sign.
