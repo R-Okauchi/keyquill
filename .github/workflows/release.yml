@@ -35,8 +35,11 @@ jobs:
       - name: Create Release Pull Request or Publish to npm
         uses: changesets/action@v1
         with:
-          publish: pnpm release
-          version: pnpm version
+          # `pnpm version` collides with pnpm's built-in `version` command
+          # (which dumps environment info). Use explicit script names so
+          # `pnpm run ci:version` / `pnpm run ci:release` hit our scripts.
+          publish: pnpm run ci:release
+          version: pnpm run ci:version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
