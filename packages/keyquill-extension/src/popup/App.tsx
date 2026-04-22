@@ -5,8 +5,10 @@ import type {
   OriginBinding,
   IncomingRequest,
   OutgoingResponse,
+  KeyDefaults,
 } from "../shared/protocol.js";
 import { ext } from "../shared/browser.js";
+import { PRESETS, getPreset } from "../shared/presets.js";
 
 function sendMessage(msg: IncomingRequest): Promise<OutgoingResponse> {
   return new Promise((resolve) => {
@@ -24,14 +26,29 @@ function hostOf(origin: string): string {
   }
 }
 
+const DEFAULT_PRESET_ID = PRESETS[0].id;
+
 function App() {
   const [keys, setKeys] = useState<KeySummary[]>([]);
   const [bindings, setBindings] = useState<OriginBinding[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingBinding, setEditingBinding] = useState<string | null>(null);
+  const [showActiveSwitcher, setShowActiveSwitcher] = useState(false);
   const [testResultKey, setTestResultKey] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Add-key form fields (controlled so the preset dropdown can auto-fill
+  // base URL / default model). user edits remain stable after switching.
+  const [formProvider, setFormProvider] = useState<string>(DEFAULT_PRESET_ID);
+  const [formLabel, setFormLabel] = useState("");
+  const [formApiKey, setFormApiKey] = useState("");
+  const [formBaseUrl, setFormBaseUrl] = useState(PRESETS[0].baseUrl);
+  const [formDefaultModel, setFormDefaultModel] = useState(PRESETS[0].defaultModel);
+  const [formTemperature, setFormTemperature] = useState<string>("");
+  const [formTopP, setFormTopP] = useState<string>("");
+  const [formReasoningEffort, setFormReasoningEffort] =
+    useState<"" | "minimal" | "low" | "medium" | "high">("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   async function loadKeys() {
     const res = await sendMessage({ type: "listKeys" });
@@ -48,30 +65,63 @@ function App() {
     loadBindings();
   }, []);
 
+  function resetForm() {
+    setFormProvider(DEFAULT_PRESET_ID);
+    setFormLabel("");
+    setFormApiKey("");
+    setFormBaseUrl(PRESETS[0].baseUrl);
+    setFormDefaultModel(PRESETS[0].defaultModel);
+    setFormTemperature("");
+    setFormTopP("");
+    setFormReasoningEffort("");
+    setShowAdvanced(false);
+    setFormError(null);
+  }
+
+  function handleProviderChange(id: string) {
+    setFormProvider(id);
+    const preset = getPreset(id);
+    if (preset) {
+      // Only auto-fill baseURL/model if user hasn't typed something different.
+      // Simplest: always overwrite on explicit preset change.
+      setFormBaseUrl(preset.baseUrl);
+      setFormDefaultModel(preset.defaultModel);
+    }
+  }
+
   async function handleAdd(e: Event) {
     e.preventDefault();
     setFormError(null);
-    const form = e.target as HTMLFormElement;
-    const fd = new FormData(form);
-    const label = (fd.get("label") as string).trim();
+    const label = formLabel.trim();
     if (!label) {
       setFormError("Label is required (e.g. Work, Personal).");
       return;
     }
+    const defaults: KeyDefaults = {};
+    if (formTemperature !== "") {
+      const t = Number(formTemperature);
+      if (!Number.isNaN(t)) defaults.temperature = t;
+    }
+    if (formTopP !== "") {
+      const p = Number(formTopP);
+      if (!Number.isNaN(p)) defaults.topP = p;
+    }
+    if (formReasoningEffort !== "") defaults.reasoningEffort = formReasoningEffort;
     const res = await sendMessage({
       type: "addKey",
-      provider: fd.get("provider") as string,
+      provider: formProvider,
       label,
-      apiKey: fd.get("apiKey") as string,
-      baseUrl: fd.get("baseUrl") as string,
-      defaultModel: fd.get("defaultModel") as string,
+      apiKey: formApiKey,
+      baseUrl: formBaseUrl,
+      defaultModel: formDefaultModel,
+      ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
     });
     if (res.type === "error") {
       setFormError(res.message);
       return;
     }
     setShowForm(false);
-    form.reset();
+    resetForm();
     await loadKeys();
   }
 
@@ -81,8 +131,9 @@ function App() {
     await loadBindings();
   }
 
-  async function handleSetDefault(keyId: string) {
-    await sendMessage({ type: "setDefault", keyId });
+  async function handleSetActive(keyId: string) {
+    await sendMessage({ type: "setActive", keyId });
+    setShowActiveSwitcher(false);
     await loadKeys();
   }
 
@@ -112,6 +163,8 @@ function App() {
     await loadBindings();
   }
 
+  const activeKey = keys.find((k) => k.isActive) ?? null;
+
   // Group keys by provider for visual organization
   const keysByProvider = new Map<string, KeySummary[]>();
   for (const k of keys) {
@@ -125,6 +178,43 @@ function App() {
       <h1>
         <img class="icon" src="/icons/icon-48.png" alt="" /> Keyquill
       </h1>
+
+      {activeKey && (
+        <div class="active-banner">
+          <div class="active-banner__info">
+            <span class="active-banner__label">Active key</span>
+            <span class="active-banner__name">
+              {activeKey.label}
+              <span class="active-banner__provider"> · {activeKey.provider}</span>
+            </span>
+          </div>
+          {keys.length > 1 && (
+            <button
+              class="btn btn--ghost btn--sm"
+              onClick={() => setShowActiveSwitcher((v) => !v)}
+            >
+              Switch
+            </button>
+          )}
+        </div>
+      )}
+
+      {activeKey && showActiveSwitcher && keys.length > 1 && (
+        <div class="active-switcher">
+          {keys
+            .filter((k) => !k.isActive)
+            .map((k) => (
+              <button
+                key={k.keyId}
+                class="active-switcher__item"
+                onClick={() => handleSetActive(k.keyId)}
+              >
+                <span class="active-switcher__name">{k.label}</span>
+                <span class="active-switcher__meta">{k.provider}</span>
+              </button>
+            ))}
+        </div>
+      )}
 
       <section class="section">
         <h2 class="section__title">Your keys ({keys.length})</h2>
@@ -142,19 +232,23 @@ function App() {
               {provider} ({list.length})
             </div>
             {list.map((k) => (
-              <div key={k.keyId} class={`key-card ${k.isDefault ? "key-card--default" : ""}`}>
+              <div key={k.keyId} class={`key-card ${k.isActive ? "key-card--active" : ""}`}>
                 <div class="key-card__header">
                   <span class="key-card__label">{k.label}</span>
-                  {k.isDefault && <span class="key-card__badge" title="Default for this provider">⭐</span>}
+                  {k.isActive && (
+                    <span class="key-card__badge" title="Active key">
+                      ⭐
+                    </span>
+                  )}
                 </div>
                 <div class="key-card__meta">
                   <span class="key-card__hint">{k.keyHint}</span>
                   <span class="key-card__model">{k.defaultModel}</span>
                 </div>
                 <div class="key-card__actions">
-                  {!k.isDefault && (
-                    <button class="btn btn--ghost btn--sm" onClick={() => handleSetDefault(k.keyId)}>
-                      Set default
+                  {!k.isActive && (
+                    <button class="btn btn--ghost btn--sm" onClick={() => handleSetActive(k.keyId)}>
+                      Set active
                     </button>
                   )}
                   <button class="btn btn--secondary btn--sm" onClick={() => handleTest(k.keyId)}>
@@ -165,7 +259,9 @@ function App() {
                   </button>
                 </div>
                 {testResultKey === k.keyId && testResult && (
-                  <div class={`test-result test-result--${testResult.includes("✓") ? "ok" : "fail"}`}>
+                  <div
+                    class={`test-result test-result--${testResult.includes("✓") ? "ok" : "fail"}`}
+                  >
                     {testResult}
                   </div>
                 )}
@@ -182,34 +278,115 @@ function App() {
           <form class="form" onSubmit={handleAdd}>
             <label>
               Provider
-              <select name="provider">
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="custom">Custom (OpenAI-compatible)</option>
+              <select
+                value={formProvider}
+                onChange={(e) => handleProviderChange((e.target as HTMLSelectElement).value)}
+              >
+                {PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>
               Label *
               <input
-                name="label"
                 type="text"
                 required
                 placeholder="Work, Personal, University…"
+                value={formLabel}
+                onInput={(e) => setFormLabel((e.target as HTMLInputElement).value)}
                 autoFocus
               />
             </label>
             <label>
               API key
-              <input name="apiKey" type="password" required placeholder="sk-..." />
+              <input
+                type="password"
+                required
+                placeholder="sk-..."
+                value={formApiKey}
+                onInput={(e) => setFormApiKey((e.target as HTMLInputElement).value)}
+              />
             </label>
-            <label>
-              Base URL
-              <input name="baseUrl" type="url" value="https://api.openai.com/v1" required />
-            </label>
-            <label>
-              Model
-              <input name="defaultModel" type="text" value="gpt-4.1-mini" required />
-            </label>
+
+            <button
+              type="button"
+              class="form__toggle"
+              onClick={() => setShowAdvanced((v) => !v)}
+              aria-expanded={showAdvanced}
+            >
+              {showAdvanced ? "▾" : "▸"} Advanced
+            </button>
+
+            {showAdvanced && (
+              <div class="form__advanced">
+                <label>
+                  Base URL
+                  <input
+                    type="url"
+                    value={formBaseUrl}
+                    onInput={(e) => setFormBaseUrl((e.target as HTMLInputElement).value)}
+                  />
+                </label>
+                <label>
+                  Model
+                  <input
+                    type="text"
+                    value={formDefaultModel}
+                    onInput={(e) => setFormDefaultModel((e.target as HTMLInputElement).value)}
+                  />
+                </label>
+                <label>
+                  Temperature
+                  <input
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    placeholder="(provider default)"
+                    value={formTemperature}
+                    onInput={(e) => setFormTemperature((e.target as HTMLInputElement).value)}
+                  />
+                </label>
+                <label>
+                  Top P
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    placeholder="(provider default)"
+                    value={formTopP}
+                    onInput={(e) => setFormTopP((e.target as HTMLInputElement).value)}
+                  />
+                </label>
+                <label>
+                  Reasoning effort
+                  <select
+                    value={formReasoningEffort}
+                    onChange={(e) =>
+                      setFormReasoningEffort(
+                        (e.target as HTMLSelectElement).value as
+                          | ""
+                          | "minimal"
+                          | "low"
+                          | "medium"
+                          | "high",
+                      )
+                    }
+                  >
+                    <option value="">(none / model default)</option>
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                </label>
+              </div>
+            )}
+
             {formError && <div class="form__error">{formError}</div>}
             <div class="form__actions">
               <button type="submit" class="btn btn--primary">
@@ -220,7 +397,7 @@ function App() {
                 class="btn btn--secondary"
                 onClick={() => {
                   setShowForm(false);
-                  setFormError(null);
+                  resetForm();
                 }}
               >
                 Cancel

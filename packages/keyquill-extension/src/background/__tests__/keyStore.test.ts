@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // In-memory mock of chrome.storage.session
 const storage: Record<string, unknown> = {};
-
 const localStorage: Record<string, unknown> = {};
 
 const mockChrome = {
@@ -49,7 +48,6 @@ const mockChrome = {
 // @ts-expect-error — stub global
 globalThis.chrome = mockChrome;
 
-// crypto.randomUUID must be available on the global
 let uuidCounter = 0;
 if (!globalThis.crypto) {
   // @ts-expect-error — partial mock
@@ -58,8 +56,9 @@ if (!globalThis.crypto) {
 globalThis.crypto.randomUUID = () =>
   `uuid-${++uuidCounter}` as `${string}-${string}-${string}-${string}-${string}`;
 
-const { addKey, getKeys, setDefault, deleteKey, updateKey, getDefaultKeyForProvider } =
-  await import("../keyStore.js");
+const { addKey, getKeys, setActive, deleteKey, updateKey, getActiveKey } = await import(
+  "../keyStore.js"
+);
 const { getBindings, setBinding } = await import("../bindingStore.js");
 
 function reset() {
@@ -68,11 +67,11 @@ function reset() {
   uuidCounter = 0;
 }
 
-describe("keyStore v2", () => {
+describe("keyStore v3 (active-key model)", () => {
   beforeEach(reset);
 
   describe("addKey", () => {
-    it("creates a key and marks it as default when first for provider", async () => {
+    it("marks the first key as active automatically", async () => {
       await addKey({
         provider: "openai",
         label: "Work",
@@ -82,8 +81,7 @@ describe("keyStore v2", () => {
       });
       const keys = await getKeys();
       expect(keys).toHaveLength(1);
-      expect(keys[0].label).toBe("Work");
-      expect(keys[0].isDefault).toBe(true);
+      expect(keys[0].isActive).toBe(true);
     });
 
     it("rejects empty label", async () => {
@@ -98,7 +96,7 @@ describe("keyStore v2", () => {
       ).rejects.toThrow(/label is required/);
     });
 
-    it("keeps first key as default when second is added without explicit flag", async () => {
+    it("leaves the existing active key alone when a second is added without flag", async () => {
       await addKey({
         provider: "openai",
         label: "Work",
@@ -107,21 +105,19 @@ describe("keyStore v2", () => {
         defaultModel: "gpt-4.1-mini",
       });
       await addKey({
-        provider: "openai",
-        label: "Personal",
-        apiKey: "sk-p",
-        baseUrl: "https://api.openai.com/v1",
-        defaultModel: "gpt-4.1-mini",
+        provider: "anthropic",
+        label: "Claude",
+        apiKey: "ant-k",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultModel: "claude-sonnet-4",
       });
       const keys = await getKeys();
       expect(keys).toHaveLength(2);
-      const work = keys.find((k) => k.label === "Work")!;
-      const personal = keys.find((k) => k.label === "Personal")!;
-      expect(work.isDefault).toBe(true);
-      expect(personal.isDefault).toBe(false);
+      expect(keys.find((k) => k.label === "Work")!.isActive).toBe(true);
+      expect(keys.find((k) => k.label === "Claude")!.isActive).toBe(false);
     });
 
-    it("demotes sibling when new key is added with isDefault=true", async () => {
+    it("demotes the previous active when a new key is added with isActive=true", async () => {
       await addKey({
         provider: "openai",
         label: "Work",
@@ -130,23 +126,21 @@ describe("keyStore v2", () => {
         defaultModel: "gpt-4.1-mini",
       });
       await addKey({
-        provider: "openai",
-        label: "Personal",
-        apiKey: "sk-p",
-        baseUrl: "https://api.openai.com/v1",
-        defaultModel: "gpt-4.1-mini",
-        isDefault: true,
+        provider: "anthropic",
+        label: "Claude",
+        apiKey: "ant-k",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultModel: "claude-sonnet-4",
+        isActive: true,
       });
       const keys = await getKeys();
-      const work = keys.find((k) => k.label === "Work")!;
-      const personal = keys.find((k) => k.label === "Personal")!;
-      expect(personal.isDefault).toBe(true);
-      expect(work.isDefault).toBe(false);
+      expect(keys.find((k) => k.label === "Work")!.isActive).toBe(false);
+      expect(keys.find((k) => k.label === "Claude")!.isActive).toBe(true);
     });
   });
 
-  describe("setDefault", () => {
-    it("toggles default within the same provider, leaves other providers untouched", async () => {
+  describe("setActive", () => {
+    it("switches the wallet-wide active key exclusively", async () => {
       await addKey({
         provider: "openai",
         label: "Work",
@@ -163,23 +157,48 @@ describe("keyStore v2", () => {
       });
       await addKey({
         provider: "anthropic",
-        label: "Claude Work",
-        apiKey: "ant-w",
+        label: "Claude",
+        apiKey: "ant-k",
         baseUrl: "https://api.anthropic.com/v1",
         defaultModel: "claude-sonnet-4",
       });
 
-      await setDefault(personal.keyId);
+      await setActive(personal.keyId);
       const keys = await getKeys();
-      expect(keys.find((k) => k.label === "Personal")!.isDefault).toBe(true);
-      expect(keys.find((k) => k.label === "Work")!.isDefault).toBe(false);
-      // anthropic key should still be default within its provider
-      expect(keys.find((k) => k.label === "Claude Work")!.isDefault).toBe(true);
+      expect(keys.filter((k) => k.isActive).map((k) => k.label)).toEqual(["Personal"]);
+    });
+  });
+
+  describe("getActiveKey", () => {
+    it("returns the active key, regardless of provider", async () => {
+      await addKey({
+        provider: "openai",
+        label: "Work",
+        apiKey: "sk-w",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini",
+      });
+      const anth = await addKey({
+        provider: "anthropic",
+        label: "Claude",
+        apiKey: "ant-k",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultModel: "claude-sonnet-4",
+        isActive: true,
+      });
+      const active = await getActiveKey();
+      expect(active?.keyId).toBe(anth.keyId);
+      expect(active?.label).toBe("Claude");
+    });
+
+    it("returns null for empty wallet", async () => {
+      const active = await getActiveKey();
+      expect(active).toBeNull();
     });
   });
 
   describe("deleteKey", () => {
-    it("promotes most-recently-updated sibling when a default is deleted", async () => {
+    it("promotes most-recently-updated sibling when the active key is deleted", async () => {
       const work = await addKey({
         provider: "openai",
         label: "Work",
@@ -199,7 +218,7 @@ describe("keyStore v2", () => {
       const keys = await getKeys();
       expect(keys).toHaveLength(1);
       expect(keys[0].label).toBe("Personal (updated)");
-      expect(keys[0].isDefault).toBe(true);
+      expect(keys[0].isActive).toBe(true);
     });
 
     it("cascades: drops bindings that referenced the deleted key", async () => {
@@ -230,34 +249,8 @@ describe("keyStore v2", () => {
     });
   });
 
-  describe("getDefaultKeyForProvider", () => {
-    it("returns the default for a given provider, ignoring others", async () => {
-      await addKey({
-        provider: "openai",
-        label: "Work",
-        apiKey: "sk-w",
-        baseUrl: "https://api.openai.com/v1",
-        defaultModel: "gpt-4.1-mini",
-      });
-      await addKey({
-        provider: "anthropic",
-        label: "Claude",
-        apiKey: "ant-k",
-        baseUrl: "https://api.anthropic.com/v1",
-        defaultModel: "claude-sonnet-4",
-      });
-
-      const openai = await getDefaultKeyForProvider("openai");
-      expect(openai?.label).toBe("Work");
-      const anthropic = await getDefaultKeyForProvider("anthropic");
-      expect(anthropic?.label).toBe("Claude");
-      const missing = await getDefaultKeyForProvider("groq");
-      expect(missing).toBeNull();
-    });
-  });
-
   describe("v1 migration", () => {
-    it("migrates keyquill_providers → keyquill_keys with auto default", async () => {
+    it("migrates keyquill_providers → keyquill_keys with first entry active", async () => {
       storage["keyquill_providers"] = [
         {
           provider: "openai",
@@ -272,10 +265,69 @@ describe("keyStore v2", () => {
       const keys = await getKeys();
       expect(keys).toHaveLength(1);
       expect(keys[0].label).toBe("Legacy");
-      expect(keys[0].isDefault).toBe(true);
+      expect(keys[0].isActive).toBe(true);
       expect(keys[0].keyId).toMatch(/^uuid-/);
       expect(storage["keyquill_providers"]).toBeUndefined();
-      expect(Array.isArray(storage["keyquill_keys"])).toBe(true);
+    });
+  });
+
+  describe("v2 migration (isDefault → isActive)", () => {
+    it("coerces v2 records: most-recently-updated per-provider default becomes active", async () => {
+      storage["keyquill_keys"] = [
+        {
+          keyId: "a",
+          provider: "openai",
+          label: "Work",
+          apiKey: "sk-w",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4o",
+          isDefault: true,
+          createdAt: 100,
+          updatedAt: 200,
+        },
+        {
+          keyId: "b",
+          provider: "anthropic",
+          label: "Claude",
+          apiKey: "ant-k",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultModel: "claude-sonnet-4",
+          isDefault: true,
+          createdAt: 100,
+          updatedAt: 300, // more recent
+        },
+      ];
+      const keys = await getKeys();
+      expect(keys.find((k) => k.keyId === "a")!.isActive).toBe(false);
+      expect(keys.find((k) => k.keyId === "b")!.isActive).toBe(true);
+    });
+
+    it("v2 records with no defaults → first entry becomes active", async () => {
+      storage["keyquill_keys"] = [
+        {
+          keyId: "a",
+          provider: "openai",
+          label: "Work",
+          apiKey: "sk-w",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4o",
+          createdAt: 100,
+          updatedAt: 100,
+        },
+        {
+          keyId: "b",
+          provider: "anthropic",
+          label: "Claude",
+          apiKey: "ant-k",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultModel: "claude-sonnet-4",
+          createdAt: 200,
+          updatedAt: 200,
+        },
+      ];
+      const keys = await getKeys();
+      expect(keys[0].isActive).toBe(true);
+      expect(keys[1].isActive).toBe(false);
     });
   });
 });

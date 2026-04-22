@@ -13,35 +13,52 @@ export interface ProviderFetchParams {
   body: string;
 }
 
+type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+
 interface NormalizedParams {
   model: string;
   messages: ChatMessage[];
   max_tokens: number;
+  max_completion_tokens?: number;
   temperature?: number;
   top_p?: number;
   stop?: string | string[];
   tools?: Tool[];
   tool_choice?: ChatParams["tool_choice"];
   response_format?: ChatParams["response_format"];
+  reasoning_effort?: ReasoningEffort;
 }
 
 /**
- * Normalize request: merge deprecated maxTokens → max_tokens, apply defaults.
+ * Normalize the request and merge key-level defaults.
+ *
+ * Precedence (highest first): explicit request field → key.defaults field
+ * → provider fallback (model baseline) → hard default (max_tokens 4096).
+ * Explicit `undefined` on the request is NOT treated as override; only
+ * fields actually set override the key defaults.
  */
 export function normalizeParams(
   request: ChatParams & { maxTokens?: number },
   provider: KeyRecord,
 ): NormalizedParams {
+  const defaults = provider.defaults;
+  const temperature = request.temperature ?? defaults?.temperature;
+  const topP = request.top_p ?? defaults?.topP;
+  const reasoningEffort = request.reasoning_effort ?? defaults?.reasoningEffort;
   return {
     model: request.model ?? provider.defaultModel,
     messages: request.messages,
     max_tokens: request.max_tokens ?? request.maxTokens ?? 4096,
-    ...(request.temperature !== undefined && { temperature: request.temperature }),
-    ...(request.top_p !== undefined && { top_p: request.top_p }),
+    ...(request.max_completion_tokens !== undefined && {
+      max_completion_tokens: request.max_completion_tokens,
+    }),
+    ...(temperature !== undefined && { temperature }),
+    ...(topP !== undefined && { top_p: topP }),
     ...(request.stop !== undefined && { stop: request.stop }),
     ...(request.tools && { tools: request.tools }),
     ...(request.tool_choice !== undefined && { tool_choice: request.tool_choice }),
     ...(request.response_format && { response_format: request.response_format }),
+    ...(reasoningEffort !== undefined && { reasoning_effort: reasoningEffort }),
   };
 }
 
@@ -74,12 +91,16 @@ function buildOpenAiPassthrough(
     max_tokens: params.max_tokens,
     stream,
   };
+  if (params.max_completion_tokens !== undefined) {
+    body.max_completion_tokens = params.max_completion_tokens;
+  }
   if (params.temperature !== undefined) body.temperature = params.temperature;
   if (params.top_p !== undefined) body.top_p = params.top_p;
   if (params.stop !== undefined) body.stop = params.stop;
   if (params.tools) body.tools = params.tools;
   if (params.tool_choice !== undefined) body.tool_choice = params.tool_choice;
   if (params.response_format) body.response_format = params.response_format;
+  if (params.reasoning_effort !== undefined) body.reasoning_effort = params.reasoning_effort;
 
   return {
     url,
@@ -90,6 +111,14 @@ function buildOpenAiPassthrough(
     body: JSON.stringify(body),
   };
 }
+
+// ── Reasoning effort → Anthropic thinking budget ───────
+const REASONING_TO_THINKING_BUDGET: Record<ReasoningEffort, number> = {
+  minimal: 1024,
+  low: 4096,
+  medium: 12000,
+  high: 32000,
+};
 
 // ── Anthropic Translation ──────────────────────────────
 
@@ -129,6 +158,14 @@ function buildAnthropicFetch(
   if (params.top_p !== undefined) body.top_p = params.top_p;
   if (params.stop) {
     body.stop_sequences = Array.isArray(params.stop) ? params.stop : [params.stop];
+  }
+  if (params.reasoning_effort) {
+    // Anthropic extended thinking: translate OpenAI-style effort enum to
+    // an explicit token budget.
+    body.thinking = {
+      type: "enabled",
+      budget_tokens: REASONING_TO_THINKING_BUDGET[params.reasoning_effort],
+    };
   }
 
   return {

@@ -25,7 +25,7 @@ import {
   addKey,
   updateKey,
   deleteKey,
-  setDefault,
+  setActive,
 } from "./keyStore.js";
 import {
   getBindings,
@@ -161,7 +161,8 @@ export async function handleMessage(
           apiKey: request.apiKey,
           baseUrl: request.baseUrl,
           defaultModel: request.defaultModel,
-          isDefault: request.isDefault,
+          isActive: request.isActive,
+          defaults: request.defaults,
         });
         return { type: "ok" };
       } catch (err) {
@@ -188,6 +189,7 @@ export async function handleMessage(
           baseUrl: request.baseUrl,
           defaultModel: request.defaultModel,
           apiKey: request.apiKey,
+          defaults: request.defaults,
         });
         if (!updated) {
           return { type: "error", code: "KEY_NOT_FOUND", message: "Key not found" };
@@ -214,15 +216,15 @@ export async function handleMessage(
       return { type: "ok" };
     }
 
-    case "setDefault": {
+    case "setActive": {
       if (!isInternal(sender)) {
         return {
           type: "error",
           code: "BLOCKED",
-          message: "Use the Keyquill extension popup to change default keys.",
+          message: "Use the Keyquill extension popup to change the active key.",
         };
       }
-      await setDefault(request.keyId);
+      await setActive(request.keyId);
       return { type: "ok" };
     }
 
