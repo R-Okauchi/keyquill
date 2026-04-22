@@ -2,22 +2,28 @@
  * Consent popup lifecycle manager.
  *
  * When a request arrives from an unapproved origin, opens a small popup
- * window asking the user to approve or deny.  Concurrent requests from
- * the same origin share a single popup (deduplication).
+ * window asking the user to approve/deny AND pick which stored key this
+ * origin should use. Concurrent requests from the same origin share a
+ * single popup (deduplication).
  *
  * Communication:
  *   consent page  ──chrome.runtime.sendMessage──▸  background
- *   The consent page sends { type: "_consentResponse", origin, approved }.
- *   Background calls handleConsentResponse(), which resolves the pending
- *   promise so the original request can proceed.
+ *   Sends { type: "_consentResponse", origin, approved, keyId? }.
+ *   Background calls handleConsentResponse(), which persists the binding
+ *   (when approved) and resolves the pending promise.
  */
 
 import { ext } from "../shared/browser.js";
-import { addGrant } from "./grantStore.js";
+import { setBinding } from "./bindingStore.js";
+
+export interface ConsentResult {
+  approved: boolean;
+  keyId?: string;
+}
 
 interface PendingConsent {
-  promise: Promise<boolean>;
-  resolve: (approved: boolean) => void;
+  promise: Promise<ConsentResult>;
+  resolve: (result: ConsentResult) => void;
   windowId?: number;
 }
 
@@ -25,15 +31,16 @@ const pending = new Map<string, PendingConsent>();
 
 /**
  * Request user consent for an origin.
- * Returns true (approved) or false (denied / popup closed).
+ * Returns { approved, keyId? }. Approved=true means user clicked Allow
+ * and picked a key (keyId is set). Approved=false means denied or closed.
  * Deduplicates: concurrent callers for the same origin share one popup.
  */
-export function requestConsent(origin: string): Promise<boolean> {
+export function requestConsent(origin: string): Promise<ConsentResult> {
   const existing = pending.get(origin);
   if (existing) return existing.promise;
 
-  let resolve!: (v: boolean) => void;
-  const promise = new Promise<boolean>((r) => {
+  let resolve!: (v: ConsentResult) => void;
+  const promise = new Promise<ConsentResult>((r) => {
     resolve = r;
   });
 
@@ -45,7 +52,7 @@ export function requestConsent(origin: string): Promise<boolean> {
   );
 
   ext.windows.create(
-    { url, type: "popup", width: 420, height: 340, focused: true },
+    { url, type: "popup", width: 420, height: 460, focused: true },
     (win) => {
       if (win?.id !== undefined) {
         entry.windowId = win.id;
@@ -62,14 +69,15 @@ export function requestConsent(origin: string): Promise<boolean> {
 export async function handleConsentResponse(
   origin: string,
   approved: boolean,
+  keyId?: string,
 ): Promise<void> {
-  if (approved) {
-    await addGrant(origin);
+  if (approved && keyId) {
+    await setBinding(origin, keyId);
   }
 
   const entry = pending.get(origin);
   if (entry) {
-    entry.resolve(approved);
+    entry.resolve({ approved, keyId });
     pending.delete(origin);
     if (entry.windowId !== undefined) {
       ext.windows.remove(entry.windowId).catch(() => {});
@@ -83,7 +91,7 @@ export async function handleConsentResponse(
 export function handleWindowClosed(windowId: number): void {
   for (const [origin, entry] of pending) {
     if (entry.windowId === windowId) {
-      entry.resolve(false);
+      entry.resolve({ approved: false });
       pending.delete(origin);
       break;
     }

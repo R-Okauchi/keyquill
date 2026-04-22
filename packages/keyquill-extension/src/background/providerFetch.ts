@@ -5,7 +5,7 @@
  * Anthropic requests are translated from OpenAI format to Messages API.
  */
 
-import type { ProviderRecord, ChatParams, ChatMessage, Tool } from "../shared/protocol.js";
+import type { KeyRecord, ChatParams, ChatMessage, Tool } from "../shared/protocol.js";
 
 export interface ProviderFetchParams {
   url: string;
@@ -30,7 +30,7 @@ interface NormalizedParams {
  */
 export function normalizeParams(
   request: ChatParams & { maxTokens?: number },
-  provider: ProviderRecord,
+  provider: KeyRecord,
 ): NormalizedParams {
   return {
     model: request.model ?? provider.defaultModel,
@@ -46,7 +46,7 @@ export function normalizeParams(
 }
 
 export function buildProviderFetch(
-  provider: ProviderRecord,
+  provider: KeyRecord,
   request: ChatParams & { maxTokens?: number },
   stream: boolean,
 ): ProviderFetchParams {
@@ -62,7 +62,7 @@ export function buildProviderFetch(
 // ── OpenAI Passthrough ─────────────────────────────────
 
 function buildOpenAiPassthrough(
-  provider: ProviderRecord,
+  provider: KeyRecord,
   params: NormalizedParams,
   stream: boolean,
 ): ProviderFetchParams {
@@ -94,7 +94,7 @@ function buildOpenAiPassthrough(
 // ── Anthropic Translation ──────────────────────────────
 
 function buildAnthropicFetch(
-  provider: ProviderRecord,
+  provider: KeyRecord,
   params: NormalizedParams,
   stream: boolean,
 ): ProviderFetchParams {

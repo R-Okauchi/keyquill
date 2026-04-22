@@ -1,8 +1,8 @@
 import { render } from "preact";
 import { useState, useEffect } from "preact/hooks";
 import type {
-  ProviderSummary,
-  OriginGrant,
+  KeySummary,
+  OriginBinding,
   IncomingRequest,
   OutgoingResponse,
 } from "../shared/protocol.js";
@@ -16,63 +16,108 @@ function sendMessage(msg: IncomingRequest): Promise<OutgoingResponse> {
   });
 }
 
+function hostOf(origin: string): string {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return origin;
+  }
+}
+
 function App() {
-  const [providers, setProviders] = useState<ProviderSummary[]>([]);
-  const [grants, setGrants] = useState<OriginGrant[]>([]);
+  const [keys, setKeys] = useState<KeySummary[]>([]);
+  const [bindings, setBindings] = useState<OriginBinding[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingBinding, setEditingBinding] = useState<string | null>(null);
+  const [testResultKey, setTestResultKey] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  async function loadProviders() {
-    const res = await sendMessage({ type: "listProviders" });
-    if (res.type === "providers") setProviders(res.providers);
+  async function loadKeys() {
+    const res = await sendMessage({ type: "listKeys" });
+    if (res.type === "keys") setKeys(res.keys);
   }
 
-  async function loadGrants() {
-    const res = await sendMessage({ type: "getGrants" });
-    if (res.type === "grants") setGrants(res.grants);
-  }
-
-  async function handleRevoke(origin: string) {
-    await sendMessage({ type: "revokeGrant", origin });
-    await loadGrants();
+  async function loadBindings() {
+    const res = await sendMessage({ type: "getBindings" });
+    if (res.type === "bindings") setBindings(res.bindings);
   }
 
   useEffect(() => {
-    loadProviders();
-    loadGrants();
+    loadKeys();
+    loadBindings();
   }, []);
 
-  async function handleRegister(e: Event) {
+  async function handleAdd(e: Event) {
     e.preventDefault();
+    setFormError(null);
     const form = e.target as HTMLFormElement;
     const fd = new FormData(form);
     const label = (fd.get("label") as string).trim();
-    await sendMessage({
-      type: "registerKey",
+    if (!label) {
+      setFormError("Label is required (e.g. Work, Personal).");
+      return;
+    }
+    const res = await sendMessage({
+      type: "addKey",
       provider: fd.get("provider") as string,
+      label,
       apiKey: fd.get("apiKey") as string,
       baseUrl: fd.get("baseUrl") as string,
       defaultModel: fd.get("defaultModel") as string,
-      ...(label ? { label } : {}),
     });
+    if (res.type === "error") {
+      setFormError(res.message);
+      return;
+    }
     setShowForm(false);
-    await loadProviders();
+    form.reset();
+    await loadKeys();
   }
 
-  async function handleDelete(provider: string) {
-    await sendMessage({ type: "deleteKey", provider });
-    await loadProviders();
+  async function handleDelete(keyId: string) {
+    await sendMessage({ type: "deleteKey", keyId });
+    await loadKeys();
+    await loadBindings();
   }
 
-  async function handleTest(provider: string) {
+  async function handleSetDefault(keyId: string) {
+    await sendMessage({ type: "setDefault", keyId });
+    await loadKeys();
+  }
+
+  async function handleTest(keyId: string) {
+    setTestResultKey(keyId);
     setTestResult("Testing...");
-    const res = await sendMessage({ type: "testKey", provider });
+    const res = await sendMessage({ type: "testKey", keyId });
     if (res.type === "testResult") {
-      setTestResult(res.reachable ? "Connected" : "Failed");
+      setTestResult(res.reachable ? "Connected ✓" : "Failed");
     } else {
       setTestResult("Error");
     }
-    setTimeout(() => setTestResult(null), 3000);
+    setTimeout(() => {
+      setTestResult(null);
+      setTestResultKey(null);
+    }, 3000);
+  }
+
+  async function handleSetBinding(origin: string, keyId: string) {
+    await sendMessage({ type: "setBinding", origin, keyId });
+    setEditingBinding(null);
+    await loadBindings();
+  }
+
+  async function handleRevokeBinding(origin: string) {
+    await sendMessage({ type: "revokeBinding", origin });
+    await loadBindings();
+  }
+
+  // Group keys by provider for visual organization
+  const keysByProvider = new Map<string, KeySummary[]>();
+  for (const k of keys) {
+    const list = keysByProvider.get(k.provider) ?? [];
+    list.push(k);
+    keysByProvider.set(k.provider, list);
   }
 
   return (
@@ -81,110 +126,161 @@ function App() {
         <img class="icon" src="/icons/icon-48.png" alt="" /> Keyquill
       </h1>
 
-      {providers.length > 0 && (
-        <div class="provider-list">
-          {providers.map((p) => (
-            <div key={p.provider} class="provider-card">
-              <div class="provider-card__header">
-                <span class="provider-card__name">{p.label || p.provider}</span>
-                <span class="provider-card__status">{p.status}</span>
-              </div>
-              <div class="provider-card__meta">
-                Provider: {p.provider} · {p.defaultModel}
-              </div>
-              <div class="provider-card__actions">
-                <button class="btn btn--secondary" onClick={() => handleTest(p.provider)}>
-                  Test
-                </button>
-                <button class="btn btn--ghost" onClick={() => handleDelete(p.provider)}>
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-          {testResult && (
-            <div
-              class={`test-result ${testResult === "Connected" ? "test-result--ok" : "test-result--fail"}`}
-            >
-              {testResult}
-            </div>
-          )}
-        </div>
-      )}
+      <section class="section">
+        <h2 class="section__title">Your keys ({keys.length})</h2>
 
-      {!showForm ? (
-        <button class="btn btn--primary" onClick={() => setShowForm(true)}>
-          + Add Provider
-        </button>
-      ) : (
-        <form class="form" onSubmit={handleRegister}>
-          <label>
-            Provider
-            <select name="provider">
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="custom">Custom (OpenAI-compatible)</option>
-            </select>
-          </label>
-          <label>
-            Label
-            <input name="label" type="text" placeholder="My OpenAI Key" />
-          </label>
-          <label>
-            API Key
-            <input name="apiKey" type="password" required placeholder="sk-..." />
-          </label>
-          <label>
-            Base URL
-            <input name="baseUrl" type="url" value="https://api.openai.com/v1" required />
-          </label>
-          <label>
-            Model
-            <input name="defaultModel" type="text" value="gpt-4.1-mini" required />
-          </label>
-          <div class="form__actions">
-            <button type="submit" class="btn btn--primary">
-              Save
-            </button>
-            <button type="button" class="btn btn--secondary" onClick={() => setShowForm(false)}>
-              Cancel
-            </button>
+        {keys.length === 0 && !showForm && (
+          <div class="empty">
+            <p>No keys registered yet.</p>
+            <p>Add one to get started.</p>
           </div>
-        </form>
-      )}
+        )}
 
-      {providers.length === 0 && !showForm && (
-        <div class="empty">
-          <p>No providers registered.</p>
-          <p>Add your API key to get started.</p>
-        </div>
-      )}
+        {Array.from(keysByProvider.entries()).map(([provider, list]) => (
+          <div key={provider} class="provider-group">
+            <div class="provider-group__header">
+              {provider} ({list.length})
+            </div>
+            {list.map((k) => (
+              <div key={k.keyId} class={`key-card ${k.isDefault ? "key-card--default" : ""}`}>
+                <div class="key-card__header">
+                  <span class="key-card__label">{k.label}</span>
+                  {k.isDefault && <span class="key-card__badge" title="Default for this provider">⭐</span>}
+                </div>
+                <div class="key-card__meta">
+                  <span class="key-card__hint">{k.keyHint}</span>
+                  <span class="key-card__model">{k.defaultModel}</span>
+                </div>
+                <div class="key-card__actions">
+                  {!k.isDefault && (
+                    <button class="btn btn--ghost btn--sm" onClick={() => handleSetDefault(k.keyId)}>
+                      Set default
+                    </button>
+                  )}
+                  <button class="btn btn--secondary btn--sm" onClick={() => handleTest(k.keyId)}>
+                    Test
+                  </button>
+                  <button class="btn btn--ghost btn--sm" onClick={() => handleDelete(k.keyId)}>
+                    Delete
+                  </button>
+                </div>
+                {testResultKey === k.keyId && testResult && (
+                  <div class={`test-result test-result--${testResult.includes("✓") ? "ok" : "fail"}`}>
+                    {testResult}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
 
-      {grants.length > 0 && (
-        <section class="connected-sites">
-          <h2>Connected Sites</h2>
-          {grants.map((g) => {
-            let hostname = g.origin;
-            try {
-              hostname = new URL(g.origin).hostname;
-            } catch {
-              /* keep raw origin */
-            }
+        {!showForm ? (
+          <button class="btn btn--primary" onClick={() => setShowForm(true)}>
+            + Add key
+          </button>
+        ) : (
+          <form class="form" onSubmit={handleAdd}>
+            <label>
+              Provider
+              <select name="provider">
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="custom">Custom (OpenAI-compatible)</option>
+              </select>
+            </label>
+            <label>
+              Label *
+              <input
+                name="label"
+                type="text"
+                required
+                placeholder="Work, Personal, University…"
+                autoFocus
+              />
+            </label>
+            <label>
+              API key
+              <input name="apiKey" type="password" required placeholder="sk-..." />
+            </label>
+            <label>
+              Base URL
+              <input name="baseUrl" type="url" value="https://api.openai.com/v1" required />
+            </label>
+            <label>
+              Model
+              <input name="defaultModel" type="text" value="gpt-4.1-mini" required />
+            </label>
+            {formError && <div class="form__error">{formError}</div>}
+            <div class="form__actions">
+              <button type="submit" class="btn btn--primary">
+                Save
+              </button>
+              <button
+                type="button"
+                class="btn btn--secondary"
+                onClick={() => {
+                  setShowForm(false);
+                  setFormError(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+
+      {bindings.length > 0 && (
+        <section class="section">
+          <h2 class="section__title">Connected sites ({bindings.length})</h2>
+          {bindings.map((b) => {
+            const host = hostOf(b.origin);
+            const bound = keys.find((k) => k.keyId === b.keyId);
+            const isEditing = editingBinding === b.origin;
             return (
-              <div key={g.origin} class="site-row">
-                <div class="site-row__info">
-                  <span class="site-row__host">{hostname}</span>
-                  <span class="site-row__date">
-                    {new Date(g.grantedAt).toLocaleDateString()}
+              <div key={b.origin} class="binding-row">
+                <div class="binding-row__info">
+                  <span class="binding-row__host">{host}</span>
+                  <span class="binding-row__key">
+                    {bound
+                      ? `→ ${bound.label} (${bound.provider})`
+                      : b.keyId
+                        ? "→ (key removed)"
+                        : "→ (no key bound)"}
                   </span>
                 </div>
-                <button
-                  class="btn btn--ghost btn--sm"
-                  onClick={() => handleRevoke(g.origin)}
-                  aria-label={`Revoke access for ${hostname}`}
-                >
-                  Revoke
-                </button>
+                <div class="binding-row__actions">
+                  {isEditing ? (
+                    <select
+                      class="binding-row__picker"
+                      onChange={(e) => {
+                        const v = (e.target as HTMLSelectElement).value;
+                        if (v) handleSetBinding(b.origin, v);
+                      }}
+                    >
+                      <option value="">Pick a key…</option>
+                      {keys.map((k) => (
+                        <option key={k.keyId} value={k.keyId}>
+                          {k.label} ({k.provider})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <button
+                      class="btn btn--ghost btn--sm"
+                      onClick={() => setEditingBinding(b.origin)}
+                    >
+                      Change
+                    </button>
+                  )}
+                  <button
+                    class="btn btn--ghost btn--sm"
+                    onClick={() => handleRevokeBinding(b.origin)}
+                    aria-label={`Revoke access for ${host}`}
+                  >
+                    Revoke
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -192,8 +288,8 @@ function App() {
       )}
 
       <p class="hint">
-        Keys are stored in browser session memory only. They are cleared when you close the browser
-        and are never sent to any server.
+        Keys live in browser session memory only. They're cleared when you close the browser and
+        never sent anywhere except the LLM provider you pick per key.
       </p>
     </div>
   );

@@ -58,32 +58,70 @@ export type ResponseFormat =
   | { type: "json_object" }
   | { type: "json_schema"; json_schema: { name: string; schema: JsonSchema; strict?: boolean } };
 
-// ── Provider Record ────────────────────────────────────
+// ── Protocol version ───────────────────────────────────
 
-export interface ProviderRecord {
-  provider: string;
+/**
+ * Bumped every time the wire protocol changes in a breaking way.
+ * v1: provider-keyed single-key storage (legacy; `ProviderRecord` based)
+ * v2: keyId-keyed multi-key storage with per-origin bindings
+ */
+export const PROTOCOL_VERSION = 2;
+
+// ── Key Record ─────────────────────────────────────────
+
+/**
+ * Canonical key entry. Multiple KeyRecords may share the same `provider`.
+ * `keyId` is the stable identifier used by SDK and bindings to reference
+ * a specific credential.
+ */
+export interface KeyRecord {
+  keyId: string;           // UUID v4, immutable
+  provider: string;        // openai / anthropic / custom
+  label: string;           // required, user-facing name
   apiKey: string;
   baseUrl: string;
   defaultModel: string;
-  label?: string;
+  isDefault?: boolean;     // invariant: at most one per provider is true
   createdAt: number;
   updatedAt: number;
 }
 
-export interface ProviderSummary {
+/**
+ * Safe projection returned to UI / SDK — never includes `apiKey`.
+ */
+export interface KeySummary {
+  keyId: string;
   provider: string;
+  label: string;
   baseUrl: string;
   defaultModel: string;
+  isDefault: boolean;
+  keyHint: string | null;   // "sk-t...st12" mask, null if unavailable
   status: "active" | "error";
-  keyHint: string | null;
-  label: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+// ── Per-origin binding ─────────────────────────────────
+
+/**
+ * Records which key an approved origin should use by default.
+ * Persisted to chrome.storage.local so it survives browser restart.
+ * Binding existence also implies consent was granted.
+ */
+export interface OriginBinding {
+  origin: string;
+  keyId: string;
+  grantedAt: number;
+  lastUsedAt: number;
 }
 
 // ── Request Parameters ─────────────────────────────────
 
 export interface ChatParams {
+  /** Explicit key selection, overrides all other resolution. */
+  keyId?: string;
+  /** Provider hint; used to fall back to that provider's default key. */
   provider?: string;
   model?: string;
   messages: ChatMessage[];
@@ -96,33 +134,37 @@ export interface ChatParams {
   response_format?: ResponseFormat;
 }
 
-// ── Origin Grant ──────────────────────────────────────
-
-export interface OriginGrant {
-  origin: string;
-  grantedAt: number;
-}
-
 // ── Incoming Requests (page/popup → extension) ─────────
 
 export type IncomingRequest =
   | { type: "ping" }
   | { type: "connect" }
   | { type: "disconnect" }
-  | { type: "listProviders" }
+  | { type: "listKeys" }
   | {
-      type: "registerKey";
+      type: "addKey";
       provider: string;
+      label: string;
       apiKey: string;
       baseUrl: string;
       defaultModel: string;
-      label?: string;
+      isDefault?: boolean;
     }
-  | { type: "deleteKey"; provider: string }
-  | { type: "testKey"; provider: string }
-  | { type: "getGrants" }
-  | { type: "revokeGrant"; origin: string }
-  | { type: "_consentResponse"; origin: string; approved: boolean }
+  | {
+      type: "updateKey";
+      keyId: string;
+      label?: string;
+      baseUrl?: string;
+      defaultModel?: string;
+      apiKey?: string;
+    }
+  | { type: "deleteKey"; keyId: string }
+  | { type: "setDefault"; keyId: string }
+  | { type: "testKey"; keyId: string }
+  | { type: "getBindings" }
+  | { type: "setBinding"; origin: string; keyId: string }
+  | { type: "revokeBinding"; origin: string }
+  | { type: "_consentResponse"; origin: string; approved: boolean; keyId?: string }
   | ChatRequestMessage;
 
 /** Non-streaming chat (via sendMessage) */
@@ -147,13 +189,13 @@ export interface ChatCompletion {
 }
 
 export type OutgoingResponse =
-  | { type: "pong"; version: string; connected?: boolean }
+  | { type: "pong"; version: string; protocol: number; connected?: boolean }
   | { type: "connected"; origin: string }
-  | { type: "providers"; providers: ProviderSummary[] }
+  | { type: "keys"; keys: KeySummary[] }
   | { type: "ok" }
   | { type: "testResult"; reachable: boolean }
-  | { type: "chatCompletion"; completion: ChatCompletion }
-  | { type: "grants"; grants: OriginGrant[] }
+  | { type: "chatCompletion"; completion: ChatCompletion; keyId: string }
+  | { type: "bindings"; bindings: OriginBinding[] }
   | { type: "error"; code: string; message: string };
 
 // ── Stream Events (extension → page, over Port) ───────
@@ -169,6 +211,8 @@ export interface ToolCallDelta {
 }
 
 export type StreamEvent =
+  /** First event. Identifies which stored key is servicing this stream. */
+  | { type: "start"; keyId: string; provider: string; label: string }
   | { type: "delta"; text: string }
   | { type: "tool_call_delta"; tool_calls: ToolCallDelta[] }
   | {

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /**
- * Tests for Keyquill SDK — relay-based messaging via window.postMessage.
+ * Tests for Keyquill SDK v2 — multi-key model with keyId + per-origin bindings.
  *
  * When extensionId is provided via constructor options, resolveExtensionId()
- * returns it immediately (no ping). Each SDK method sends exactly ONE
+ * returns it immediately (no probing ping). Each SDK method sends exactly ONE
  * postMessage request (isAvailable sends a ping to verify reachability).
  */
 
@@ -77,7 +77,7 @@ function simulateStreamEvents(events: unknown[]): void {
   }
 }
 
-describe("Keyquill", () => {
+describe("Keyquill v2 SDK", () => {
   let vault: InstanceType<typeof Keyquill>;
 
   beforeEach(() => {
@@ -96,11 +96,9 @@ describe("Keyquill", () => {
     it("returns true when extension responds with pong", async () => {
       const promise = vault.isAvailable();
 
-      // extensionId is set, so resolveExtensionId returns immediately.
-      // isAvailable sends ONE ping to verify reachability.
       await vi.waitFor(() => expect(postedMessages.length).toBe(1));
       expect((postedMessages[0].payload as { type: string }).type).toBe("ping");
-      simulateResponse({ type: "pong", version: "0.2.0" });
+      simulateResponse({ type: "pong", version: "0.2.0", protocol: 2 });
 
       expect(await promise).toBe(true);
     });
@@ -111,76 +109,57 @@ describe("Keyquill", () => {
     });
   });
 
-  describe("listProviders", () => {
-    it("returns providers from extension", async () => {
-      const providers = [
+  describe("listKeys", () => {
+    it("returns key summaries from extension", async () => {
+      const keys = [
         {
+          keyId: "k1",
           provider: "openai",
+          label: "Work",
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini",
-          status: "active",
-          keyHint: "****",
-          label: "My OpenAI Key",
+          isDefault: true,
+          keyHint: "sk-t...est1",
+          status: "active" as const,
           createdAt: 1000,
           updatedAt: 1000,
         },
+        {
+          keyId: "k2",
+          provider: "openai",
+          label: "Personal",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini",
+          isDefault: false,
+          keyHint: "sk-p...est2",
+          status: "active" as const,
+          createdAt: 2000,
+          updatedAt: 2000,
+        },
       ];
 
-      const promise = vault.listProviders();
+      const promise = vault.listKeys();
 
       await vi.waitFor(() => expect(postedMessages.length).toBe(1));
-      expect((postedMessages[0].payload as { type: string }).type).toBe("listProviders");
-      simulateResponse({ type: "providers", providers });
+      expect((postedMessages[0].payload as { type: string }).type).toBe("listKeys");
+      simulateResponse({ type: "keys", keys });
 
-      expect(await promise).toEqual(providers);
-    });
-  });
-
-  describe("registerKey", () => {
-    it("throws with guidance to use extension popup", async () => {
-      await expect(
-        vault.registerKey("openai", {
-          apiKey: "sk-test",
-          baseUrl: "https://api.openai.com/v1",
-          defaultModel: "gpt-4.1-mini",
-        }),
-      ).rejects.toThrow("extension popup");
-    });
-
-    it("does not send any postMessage", async () => {
-      try {
-        await vault.registerKey("openai", {
-          apiKey: "sk-test",
-          baseUrl: "https://api.openai.com/v1",
-          defaultModel: "gpt-4.1-mini",
-        });
-      } catch {
-        // expected
-      }
-      expect(postedMessages).toHaveLength(0);
-    });
-  });
-
-  describe("deleteKey", () => {
-    it("sends deleteKey message", async () => {
-      const promise = vault.deleteKey("openai");
-
-      await vi.waitFor(() => expect(postedMessages.length).toBe(1));
-      expect(postedMessages[0].payload).toEqual({
-        type: "deleteKey",
-        provider: "openai",
-      });
-      simulateResponse({ type: "ok" });
-
-      await promise;
+      const result = await promise;
+      expect(result).toHaveLength(2);
+      expect(result[0].label).toBe("Work");
+      expect(result[0].isDefault).toBe(true);
     });
   });
 
   describe("testKey", () => {
-    it("returns reachable status", async () => {
-      const promise = vault.testKey("openai");
+    it("tests a specific key by keyId", async () => {
+      const promise = vault.testKey("key-uuid-123");
 
       await vi.waitFor(() => expect(postedMessages.length).toBe(1));
+      expect(postedMessages[0].payload).toEqual({
+        type: "testKey",
+        keyId: "key-uuid-123",
+      });
       simulateResponse({ type: "testResult", reachable: true });
 
       expect(await promise).toEqual({ reachable: true });
@@ -188,7 +167,7 @@ describe("Keyquill", () => {
   });
 
   describe("chat", () => {
-    it("returns chat completion from extension", async () => {
+    it("returns { completion, keyId } from extension", async () => {
       const completion = {
         content: "Hello!",
         finish_reason: "stop",
@@ -200,9 +179,29 @@ describe("Keyquill", () => {
       });
 
       await vi.waitFor(() => expect(postedMessages.length).toBe(1));
-      simulateResponse({ type: "chatCompletion", completion });
+      simulateResponse({ type: "chatCompletion", completion, keyId: "k1" });
 
-      expect(await promise).toEqual(completion);
+      const result = await promise;
+      expect(result.completion).toEqual(completion);
+      expect(result.keyId).toBe("k1");
+    });
+
+    it("forwards explicit keyId", async () => {
+      const promise = vault.chat({
+        keyId: "k2",
+        messages: [{ role: "user" as const, content: "Hi" }],
+      });
+
+      await vi.waitFor(() => expect(postedMessages.length).toBe(1));
+      expect((postedMessages[0].payload as { keyId: string }).keyId).toBe("k2");
+
+      simulateResponse({
+        type: "chatCompletion",
+        completion: { content: "ok", finish_reason: "stop" },
+        keyId: "k2",
+      });
+      const result = await promise;
+      expect(result.keyId).toBe("k2");
     });
 
     it("throws on error response", async () => {
@@ -211,14 +210,14 @@ describe("Keyquill", () => {
       });
 
       await vi.waitFor(() => expect(postedMessages.length).toBe(1));
-      simulateResponse({ type: "error", code: "PROVIDER_NOT_FOUND", message: "No provider" });
+      simulateResponse({ type: "error", code: "KEY_NOT_FOUND", message: "No key" });
 
-      await expect(promise).rejects.toThrow("No provider");
+      await expect(promise).rejects.toThrow("No key");
     });
   });
 
   describe("chatStream", () => {
-    it("yields stream events via relay", async () => {
+    it("yields start event plus stream events via relay", async () => {
       const events: unknown[] = [];
       const generator = vault.chatStream({
         messages: [{ role: "user" as const, content: "Hi" }],
@@ -231,20 +230,49 @@ describe("Keyquill", () => {
         }
       })();
 
-      // chatStream opens a stream-open message
       await vi.waitFor(() => postedMessages.some((m) => m.type === "keyquill-stream-open"));
 
       simulateStreamEvents([
+        { type: "start", keyId: "k1", provider: "openai", label: "Work" },
         { type: "delta", text: "Hello" },
         { type: "delta", text: " world" },
         { type: "done", finish_reason: "stop" },
       ]);
 
       await consumePromise;
-      expect(events).toHaveLength(3);
-      expect(events[0]).toEqual({ type: "delta", text: "Hello" });
-      expect(events[1]).toEqual({ type: "delta", text: " world" });
-      expect(events[2]).toEqual(expect.objectContaining({ type: "done", finish_reason: "stop" }));
+      expect(events).toHaveLength(4);
+      expect(events[0]).toEqual({
+        type: "start",
+        keyId: "k1",
+        provider: "openai",
+        label: "Work",
+      });
+      expect(events[1]).toEqual({ type: "delta", text: "Hello" });
+      expect(events[3]).toEqual(expect.objectContaining({ type: "done", finish_reason: "stop" }));
+    });
+
+    it("passes keyId + provider through to the port open payload", async () => {
+      const generator = vault.chatStream({
+        keyId: "k2",
+        provider: "anthropic",
+        messages: [{ role: "user" as const, content: "Hi" }],
+      });
+
+      const consumePromise = (async () => {
+        for await (const _event of generator) {
+          /* consume */
+        }
+      })();
+
+      await vi.waitFor(() => postedMessages.some((m) => m.type === "keyquill-stream-open"));
+      const open = postedMessages.find((m) => m.type === "keyquill-stream-open");
+      expect(open).toBeDefined();
+      const payload = open!.payload as { keyId?: string; provider?: string };
+      expect(payload.keyId).toBe("k2");
+      expect(payload.provider).toBe("anthropic");
+
+      simulateStreamEvents([{ type: "done", finish_reason: "stop" }]);
+      await consumePromise;
     });
   });
 });
