@@ -1,35 +1,10 @@
 {
   "name": "llmvault-extension",
   "version": "0.1.0",
-  "description": "LLMVault browser extension — Manifest V3 BYOK wallet for Chrome and Firefox. Stores LLM API keys in chrome.storage.session and calls providers directly from a service worker.",
+  "private": true,
+  "description": "LLMVault browser extension — Manifest V3 BYOK wallet for Chrome and Firefox. Distributed via Chrome Web Store and Firefox AMO; not published to npm.",
   "type": "module",
   "license": "MIT",
-  "keywords": [
-    "llm",
-    "llmvault",
-    "browser-extension",
-    "chrome-extension",
-    "firefox-addon",
-    "manifest-v3",
-    "byok",
-    "security"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/R-Okauchi/llmvault.git",
-    "directory": "packages/llmvault-extension"
-  },
-  "homepage": "https://github.com/R-Okauchi/llmvault#readme",
-  "bugs": "https://github.com/R-Okauchi/llmvault/issues",
-  "files": [
-    "dist-chrome",
-    "dist-firefox",
-    "README.md",
-    "LICENSE"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "dev": "vite build --watch",
     "dev:firefox": "BROWSER_TARGET=firefox vite build --watch",
