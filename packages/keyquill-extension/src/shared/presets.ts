@@ -28,7 +28,10 @@ export const PRESETS: Preset[] = [
     id: "openai",
     label: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
-    defaultModel: "gpt-4.1-mini",
+    // GPT-5.4-mini is the cost-balanced active default in the OpenAI API
+    // as of 2026-04; the legacy gpt-4.1-mini was retired along with the
+    // rest of the GPT-4 family.
+    defaultModel: "gpt-5.4-mini",
   },
   {
     id: "anthropic",

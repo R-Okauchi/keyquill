@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { KeyRecord } from "../../shared/protocol.js";
-import { buildProviderFetch, normalizeParams } from "../providerFetch.js";
+import { buildProviderFetch, normalizeParams, isOpenAIReasoningModel } from "../providerFetch.js";
 
 function mkKey(overrides: Partial<KeyRecord> = {}): KeyRecord {
   return {
@@ -116,6 +116,107 @@ describe("buildProviderFetch (OpenAI path)", () => {
     expect(url).toBe(
       "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
     );
+  });
+});
+
+describe("isOpenAIReasoningModel", () => {
+  const reasoning = [
+    // o-series (API-only since Feb 2026)
+    "o1",
+    "o1-mini",
+    "o1-preview",
+    "o3",
+    "o3-mini",
+    "o3-pro",
+    "o4-mini",
+    // GPT-5 family (all ChatGPT active models in 2026)
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-thinking",
+    "gpt-5.2",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.4-nano",
+    "gpt-5.4-thinking",
+    "gpt-5.4-pro",
+  ];
+  const legacy = [
+    // GPT-4 family (retired in ChatGPT but still API-accessible with max_tokens)
+    "gpt-4",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-3.5-turbo",
+    // Non-OpenAI models — helper intentionally only matches OpenAI patterns
+    "claude-sonnet-4-6",
+    "llama-3.3-70b-versatile",
+    "deepseek-chat",
+    "grok-4-1-fast-non-reasoning",
+  ];
+
+  for (const m of reasoning) {
+    it(`recognizes ${m} as reasoning`, () => {
+      expect(isOpenAIReasoningModel(m)).toBe(true);
+    });
+  }
+  for (const m of legacy) {
+    it(`does not flag ${m} as reasoning`, () => {
+      expect(isOpenAIReasoningModel(m)).toBe(false);
+    });
+  }
+});
+
+describe("buildProviderFetch (OpenAI reasoning models)", () => {
+  it("sends max_completion_tokens and omits max_tokens for gpt-5.2", () => {
+    const { body } = buildProviderFetch(
+      mkKey({ provider: "openai", defaultModel: "gpt-5.2" }),
+      { messages: [{ role: "user", content: "hi" }] },
+      false,
+    );
+    const parsed = JSON.parse(body);
+    expect(parsed.max_completion_tokens).toBe(4096);
+    expect(parsed.max_tokens).toBeUndefined();
+  });
+
+  it("promotes the default max_tokens value into max_completion_tokens for o3", () => {
+    const { body } = buildProviderFetch(
+      mkKey({ provider: "openai", defaultModel: "o3" }),
+      {
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 8000,
+      },
+      false,
+    );
+    const parsed = JSON.parse(body);
+    expect(parsed.max_completion_tokens).toBe(8000);
+    expect(parsed.max_tokens).toBeUndefined();
+  });
+
+  it("respects explicit max_completion_tokens over max_tokens for gpt-5.4", () => {
+    const { body } = buildProviderFetch(
+      mkKey({ provider: "openai", defaultModel: "gpt-5.4" }),
+      {
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 4096,
+        max_completion_tokens: 16000,
+      },
+      false,
+    );
+    const parsed = JSON.parse(body);
+    expect(parsed.max_completion_tokens).toBe(16000);
+    expect(parsed.max_tokens).toBeUndefined();
+  });
+
+  it("legacy gpt-4o still sends max_tokens only", () => {
+    const { body } = buildProviderFetch(
+      mkKey({ provider: "openai", defaultModel: "gpt-4o" }),
+      { messages: [{ role: "user", content: "hi" }] },
+      false,
+    );
+    const parsed = JSON.parse(body);
+    expect(parsed.max_tokens).toBe(4096);
+    expect(parsed.max_completion_tokens).toBeUndefined();
   });
 });
 
