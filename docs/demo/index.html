@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LLMVault Demo</title>
+    <meta name="description" content="Live demo of the LLMVault browser extension + SDK. Bring Your Own Key, no server." />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f172a;
+        --bg-elev: #1e293b;
+        --fg: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #818cf8;
+        --accent-hover: #6366f1;
+        --danger: #f87171;
+        --border: #334155;
+        --radius: 8px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px 16px;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.5;
+      }
+      .wrap { max-width: 720px; margin: 0 auto; }
+      header { margin-bottom: 32px; }
+      h1 { margin: 0 0 8px; font-size: 1.75rem; }
+      .subtitle { color: var(--muted); margin: 0 0 16px; }
+      #status {
+        padding: 10px 14px;
+        border-radius: var(--radius);
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        font-size: 0.95rem;
+      }
+      #status.err { border-color: var(--danger); color: var(--danger); }
+      #status.ok { border-color: var(--accent); color: var(--accent); }
+      main section { margin-top: 24px; }
+      .card {
+        padding: 20px;
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+      }
+      button {
+        cursor: pointer;
+        padding: 10px 18px;
+        background: var(--accent);
+        color: #0f172a;
+        border: 0;
+        border-radius: var(--radius);
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+      button:hover { background: var(--accent-hover); color: #fff; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--bg);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        font-family: inherit;
+        font-size: 0.95rem;
+        resize: vertical;
+        min-height: 80px;
+      }
+      textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+      #chat-form { display: flex; flex-direction: column; gap: 12px; }
+      #output {
+        margin-top: 16px;
+        padding: 16px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 0.9rem;
+        min-height: 60px;
+      }
+      footer {
+        margin-top: 48px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.85rem;
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      a { color: var(--accent); }
+      a:hover { color: var(--accent-hover); }
+      code {
+        padding: 2px 6px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font-size: 0.85em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>LLMVault Demo</h1>
+        <p class="subtitle">
+          Your API key stays in the extension. This page never sees it. No server, no logging.
+        </p>
+        <div id="status">Checking for extension…</div>
+      </header>
+
+      <main>
+        <section id="pre-connect" class="card" hidden>
+          <p style="margin-top: 0">
+            <strong>Step 1 — Install the extension.</strong> Until the Chrome Web Store listing is live,
+            install from source:
+            <a href="https://github.com/R-Okauchi/llmvault#development">github.com/R-Okauchi/llmvault</a>.
+          </p>
+          <p>
+            <strong>Step 2 — Register an API key.</strong> Click the LLMVault icon in your browser
+            toolbar, add an OpenAI-compatible key. The key is stored in <code>chrome.storage.session</code>
+            and is cleared when you close the browser.
+          </p>
+          <p>
+            <strong>Step 3 — Connect this page.</strong> Click below. A consent popup will appear; approve it to let this page use your key.
+          </p>
+          <button id="connect-btn" type="button">Connect extension</button>
+        </section>
+
+        <section id="chat" class="card" hidden>
+          <form id="chat-form">
+            <label for="prompt">Prompt</label>
+            <textarea id="prompt" rows="3" placeholder="Ask anything…">Write a haiku about BYOK.</textarea>
+            <button type="submit" id="send-btn">Send</button>
+          </form>
+          <div id="output" aria-live="polite"></div>
+        </section>
+      </main>
+
+      <footer>
+        <a href="..">Back to landing</a>
+        <a href="https://github.com/R-Okauchi/llmvault">Source</a>
+        <a href="../privacy-policy">Privacy policy</a>
+        <a href="https://github.com/sponsors/R-Okauchi">Sponsor</a>
+      </footer>
+    </div>
+
+    <script type="module">
+      import { LLMVault } from "https://esm.sh/llmvault@0.1.1";
+
+      const vault = new LLMVault();
+      const statusEl = document.querySelector("#status");
+      const preConnect = document.querySelector("#pre-connect");
+      const chat = document.querySelector("#chat");
+      const connectBtn = document.querySelector("#connect-btn");
+      const chatForm = document.querySelector("#chat-form");
+      const promptEl = document.querySelector("#prompt");
+      const sendBtn = document.querySelector("#send-btn");
+      const output = document.querySelector("#output");
+
+      function setStatus(text, mode = "") {
+        statusEl.textContent = text;
+        statusEl.className = mode;
+      }
+
+      async function refreshState() {
+        const available = await vault.isAvailable();
+        if (!available) {
+          setStatus("Extension not detected. Install it first.", "err");
+          preConnect.hidden = false;
+          chat.hidden = true;
+          return;
+        }
+        const connected = await vault.isConnected();
+        if (!connected) {
+          setStatus("Extension ready. Click Connect to grant this page access.");
+          preConnect.hidden = false;
+          chat.hidden = true;
+          return;
+        }
+        setStatus("Connected ✓", "ok");
+        preConnect.hidden = true;
+        chat.hidden = false;
+      }
+
+      connectBtn.addEventListener("click", async () => {
+        connectBtn.disabled = true;
+        try {
+          await vault.connect();
+          await refreshState();
+        } catch (err) {
+          setStatus(`Connect failed: ${err.message || err}`, "err");
+        } finally {
+          connectBtn.disabled = false;
+        }
+      });
+
+      chatForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const prompt = promptEl.value.trim();
+        if (!prompt) return;
+        sendBtn.disabled = true;
+        output.textContent = "";
+        try {
+          for await (const event of vault.chatStream({
+            messages: [{ role: "user", content: prompt }],
+          })) {
+            if (event.type === "delta") output.textContent += event.text;
+            if (event.type === "error") {
+              output.textContent += `\n[error] ${event.message}`;
+            }
+          }
+        } catch (err) {
+          output.textContent += `\n[error] ${err.message || err}`;
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
+
+      refreshState();
+    </script>
+  </body>
+</html>
