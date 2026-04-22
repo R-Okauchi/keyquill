@@ -10,31 +10,82 @@ import type {
   OutgoingResponse,
   StreamEvent,
   ToolCallDelta,
+  KeyRecord,
 } from "../shared/protocol.js";
-import { getProviderWithKey, getFirstProvider } from "./keyStore.js";
+import { getKey, getDefaultKeyForProvider, getGlobalDefaultKey } from "./keyStore.js";
+import { getBinding, touchBindingUsage } from "./bindingStore.js";
 import { buildProviderFetch, parseAnthropicCompletion } from "./providerFetch.js";
+
+// ── Key resolution ─────────────────────────────────────
+
+/**
+ * Resolve which stored KeyRecord should service this request.
+ *
+ * Priority:
+ *   1. `request.keyId` — explicit SDK selection
+ *   2. Per-origin binding (`bindings[origin].keyId`)
+ *   3. `request.provider` → that provider's default key
+ *   4. Global default (first isDefault, else first key overall)
+ *
+ * Returns null when no viable key exists.
+ */
+export async function resolveKey(
+  request: { keyId?: string; provider?: string },
+  origin: string | null,
+): Promise<KeyRecord | null> {
+  if (request.keyId) {
+    return (await getKey(request.keyId)) ?? null;
+  }
+
+  if (origin && origin !== "__internal__") {
+    const binding = await getBinding(origin);
+    if (binding?.keyId) {
+      const keyRecord = await getKey(binding.keyId);
+      if (keyRecord) {
+        touchBindingUsage(origin).catch(() => {
+          // non-critical
+        });
+        return keyRecord;
+      }
+      // Binding is stale (referenced key was deleted); fall through.
+    }
+  }
+
+  if (request.provider && request.provider !== "auto") {
+    return await getDefaultKeyForProvider(request.provider);
+  }
+
+  return await getGlobalDefaultKey();
+}
 
 // ── Streaming ──────────────────────────────────────────
 
 export async function handleChatStream(
   port: chrome.runtime.Port,
   request: ChatStreamRequest,
+  origin: string | null,
 ): Promise<void> {
-  const provider =
-    request.provider && request.provider !== "auto"
-      ? await getProviderWithKey(request.provider)
-      : await getFirstProvider();
+  const keyRecord = await resolveKey(request, origin);
 
-  if (!provider) {
+  if (!keyRecord) {
     sendEvent(port, {
       type: "error",
-      code: "PROVIDER_NOT_FOUND",
-      message: "No provider configured. Open the Keyquill popup to add one.",
+      code: "KEY_NOT_FOUND",
+      message:
+        "No Keyquill key available. Open the extension popup to add one or to bind this site to a key.",
     });
     return;
   }
 
-  const fetchParams = buildProviderFetch(provider, request, true);
+  // Announce which key is servicing this stream (for audit / UI hint).
+  sendEvent(port, {
+    type: "start",
+    keyId: keyRecord.keyId,
+    provider: keyRecord.provider,
+    label: keyRecord.label,
+  });
+
+  const fetchParams = buildProviderFetch(keyRecord, request, true);
 
   let response: Response;
   try {
@@ -71,11 +122,10 @@ export async function handleChatStream(
     return;
   }
 
-  // Parse SSE stream and forward events
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  const isAnthropic = provider.provider === "anthropic";
+  const isAnthropic = keyRecord.provider === "anthropic";
 
   try {
     while (true) {
@@ -120,12 +170,10 @@ function parseOpenAiStreamEvent(port: chrome.runtime.Port, data: Record<string, 
   const choice = choices[0];
   const delta = choice.delta as Record<string, unknown> | undefined;
 
-  // Text delta
   if (delta?.content) {
     sendEvent(port, { type: "delta", text: delta.content as string });
   }
 
-  // Tool call delta
   if (delta?.tool_calls) {
     sendEvent(port, {
       type: "tool_call_delta",
@@ -133,7 +181,6 @@ function parseOpenAiStreamEvent(port: chrome.runtime.Port, data: Record<string, 
     });
   }
 
-  // Finish reason (stream ending)
   if (choice.finish_reason) {
     const usage = data.usage as Record<string, number> | undefined;
     sendEvent(port, {
@@ -151,13 +198,11 @@ function parseOpenAiStreamEvent(port: chrome.runtime.Port, data: Record<string, 
 function parseAnthropicStreamEvent(port: chrome.runtime.Port, data: Record<string, unknown>): void {
   const eventType = data.type as string;
 
-  // Text delta
   if (eventType === "content_block_delta") {
     const delta = data.delta as Record<string, unknown>;
     if (delta?.type === "text_delta") {
       sendEvent(port, { type: "delta", text: delta.text as string });
     }
-    // Tool use input_json_delta
     if (delta?.type === "input_json_delta") {
       sendEvent(port, {
         type: "tool_call_delta",
@@ -171,7 +216,6 @@ function parseAnthropicStreamEvent(port: chrome.runtime.Port, data: Record<strin
     }
   }
 
-  // Tool use content_block_start
   if (eventType === "content_block_start") {
     const block = data.content_block as Record<string, unknown>;
     if (block?.type === "tool_use") {
@@ -189,7 +233,6 @@ function parseAnthropicStreamEvent(port: chrome.runtime.Port, data: Record<strin
     }
   }
 
-  // Message delta with stop_reason and usage
   if (eventType === "message_delta") {
     const delta = data.delta as Record<string, unknown> | undefined;
     const stopReason = delta?.stop_reason as string | undefined;
@@ -207,17 +250,17 @@ function parseAnthropicStreamEvent(port: chrome.runtime.Port, data: Record<strin
 
 // ── Non-Streaming Chat ─────────────────────────────────
 
-export async function handleChat(request: ChatRequestMessage): Promise<OutgoingResponse> {
-  const provider =
-    request.provider && request.provider !== "auto"
-      ? await getProviderWithKey(request.provider)
-      : await getFirstProvider();
+export async function handleChat(
+  request: ChatRequestMessage,
+  origin: string | null,
+): Promise<OutgoingResponse> {
+  const keyRecord = await resolveKey(request, origin);
 
-  if (!provider) {
-    return { type: "error", code: "PROVIDER_NOT_FOUND", message: "No provider configured." };
+  if (!keyRecord) {
+    return { type: "error", code: "KEY_NOT_FOUND", message: "No Keyquill key available." };
   }
 
-  const fetchParams = buildProviderFetch(provider, request, false);
+  const fetchParams = buildProviderFetch(keyRecord, request, false);
 
   let response: Response;
   try {
@@ -245,11 +288,12 @@ export async function handleChat(request: ChatRequestMessage): Promise<OutgoingR
 
   const data = (await response.json()) as Record<string, unknown>;
 
-  if (provider.provider === "anthropic") {
-    return { type: "chatCompletion", completion: parseAnthropicCompletion(data) };
-  }
+  const completion =
+    keyRecord.provider === "anthropic"
+      ? parseAnthropicCompletion(data)
+      : parseOpenAiCompletion(data);
 
-  return { type: "chatCompletion", completion: parseOpenAiCompletion(data) };
+  return { type: "chatCompletion", completion, keyId: keyRecord.keyId };
 }
 
 function parseOpenAiCompletion(data: Record<string, unknown>): ChatCompletion {
@@ -278,7 +322,6 @@ function parseOpenAiCompletion(data: Record<string, unknown>): ChatCompletion {
 
 // ── Helpers ────────────────────────────────────────────
 
-/** Strip potential API key / token patterns from error text before relaying to the webpage. */
 function sanitizeErrorText(text: string): string {
   return text
     .replace(/Bearer\s+[\w\-_.]+/gi, "Bearer [REDACTED]")

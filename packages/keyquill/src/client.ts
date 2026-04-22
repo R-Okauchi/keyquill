@@ -1,32 +1,31 @@
 /**
  * Keyquill — SDK for communicating with the Keyquill browser extension.
  *
+ * Multi-key model (v2 protocol):
+ *   - User's wallet stores multiple KeyRecords (e.g. OpenAI Work, OpenAI Personal)
+ *   - Each key has a stable `keyId` (UUID) and a user-facing `label`
+ *   - `chatStream` / `chat` accept `keyId` (explicit) or `provider` (default-per-provider)
+ *   - When neither is specified, the extension uses the user's global default,
+ *     or the origin's bound key if one was set at consent time
+ *   - Every stream starts with a `{ type: "start", keyId, provider, label }` event
+ *     so callers can tell which key serviced the request (useful for audit UI)
+ *
  * Usage:
  *   import { Keyquill } from 'keyquill';
  *   const vault = new Keyquill();
- *
  *   if (await vault.isAvailable()) {
- *     // Streaming
- *     for await (const event of vault.chatStream({ messages: [{ role: 'user', content: 'Hello' }] })) {
+ *     await vault.connect(); // shows consent popup + key picker on first use
+ *     for await (const event of vault.chatStream({
+ *       messages: [{ role: 'user', content: 'Hello' }],
+ *     })) {
+ *       if (event.type === 'start') console.log(`Using ${event.label}`);
  *       if (event.type === 'delta') process.stdout.write(event.text);
  *     }
- *
- *     // Non-streaming
- *     const result = await vault.chat({ messages: [{ role: 'user', content: 'Hello' }] });
- *     console.log(result.content);
- *
- *     // With tools
- *     const result2 = await vault.chat({
- *       model: 'gpt-4o',
- *       messages: [{ role: 'user', content: "What's the weather?" }],
- *       tools: [{ type: 'function', function: { name: 'get_weather', parameters: { type: 'object', properties: { location: { type: 'string' } } } } }],
- *     });
  *   }
  */
 
 import type {
-  ProviderSummary,
-  RegisterKeyParams,
+  KeySummary,
   ChatParams,
   ChatStreamParams,
   ChatCompletion,
@@ -34,7 +33,7 @@ import type {
   VaultRequest,
   VaultResponse,
 } from "./types.js";
-import { ErrorCode } from "./types.js";
+import { ErrorCode, SDK_PROTOCOL_VERSION } from "./types.js";
 import { sendExtensionMessage, connectToExtension, detectExtensionId } from "./detect.js";
 import { portToStream } from "./stream.js";
 
@@ -87,7 +86,6 @@ export class Keyquill {
 
   /**
    * Check if the current origin is connected (approved by the user).
-   * Equivalent to `isAvailable()` + checking the `connected` flag.
    */
   async isConnected(): Promise<boolean> {
     const id = await this.resolveExtensionId();
@@ -103,22 +101,28 @@ export class Keyquill {
 
   /**
    * Request permission to use Keyquill from this origin.
-   * Opens a consent popup if the origin is not yet approved.
-   * This is the equivalent of MetaMask's `eth_requestAccounts`.
+   * Opens a consent popup (with key picker) if the origin is not yet approved.
+   * Equivalent to MetaMask's `eth_requestAccounts`.
    *
-   * @param timeoutMs  Timeout in ms (default: 60000). Set high because
-   *                   it waits for user interaction with the consent popup.
-   * @throws Error if the user denies the connection.
-   *
-   * @example
-   * const vault = new Keyquill();
-   * await vault.connect(); // opens consent popup if needed
-   * const result = await vault.chat({ messages: [...] });
+   * @throws Error if the user denies or if protocol versions mismatch.
    */
   async connect(timeoutMs = 60_000): Promise<void> {
     const id = await this.resolveExtensionId();
     if (!id) {
       throw new Error(`[${ErrorCode.EXTENSION_NOT_FOUND}] Keyquill extension not found.`);
+    }
+
+    // Protocol version check
+    const ping = await sendExtensionMessage<VaultResponse>(
+      id,
+      { type: "ping" },
+      this.timeout,
+    );
+    if (ping?.type === "pong" && ping.protocol !== SDK_PROTOCOL_VERSION) {
+      throw new Error(
+        `[${ErrorCode.PROTOCOL_MISMATCH}] SDK expects protocol v${SDK_PROTOCOL_VERSION} ` +
+          `but extension speaks v${ping.protocol}. Update the Keyquill extension.`,
+      );
     }
 
     const res = await sendExtensionMessage<VaultResponse>(
@@ -136,9 +140,8 @@ export class Keyquill {
   }
 
   /**
-   * Disconnect this origin from Keyquill (revoke the grant).
-   * After disconnecting, `connect()` must be called again before
-   * using any other API.
+   * Disconnect this origin from Keyquill (revoke the binding).
+   * After disconnecting, `connect()` must be called again.
    */
   async disconnect(): Promise<void> {
     const res = await this.send({ type: "disconnect" });
@@ -148,63 +151,41 @@ export class Keyquill {
   }
 
   /**
-   * List registered providers (no key material is returned).
+   * List registered keys (no apiKey material is returned).
+   * Each KeySummary includes `keyId`, `label`, `provider`, `isDefault`, etc.
    */
-  async listProviders(): Promise<ProviderSummary[]> {
-    const res = await this.send({ type: "listProviders" });
-    if (res.type === "providers") return res.providers;
+  async listKeys(): Promise<KeySummary[]> {
+    const res = await this.send({ type: "listKeys" });
+    if (res.type === "keys") return res.keys;
     return [];
   }
 
   /**
-   * @deprecated Use the Keyquill browser extension popup to register API keys.
-   * Key registration via postMessage is disabled for security — API keys should
-   * not travel through the window.postMessage channel.
+   * Test connectivity to the provider behind a specific stored key.
+   * @param keyId stable keyId from `listKeys()`.
    */
-  async registerKey(_provider: string, _params: RegisterKeyParams): Promise<void> {
-    throw new Error(
-      "registerKey() is disabled in the SDK. " +
-        "Use the Keyquill extension popup to register API keys securely.",
-    );
-  }
-
-  /**
-   * Delete a provider key.
-   */
-  async deleteKey(provider: string): Promise<void> {
-    const res = await this.send({ type: "deleteKey", provider });
-    if (res.type === "error") {
-      throw new Error(`[${res.code}] ${res.message}`);
-    }
-  }
-
-  /**
-   * Test connectivity to a provider by sending a minimal request.
-   */
-  async testKey(provider: string): Promise<{ reachable: boolean }> {
-    const res = await this.send({ type: "testKey", provider });
+  async testKey(keyId: string): Promise<{ reachable: boolean }> {
+    const res = await this.send({ type: "testKey", keyId });
     if (res.type === "testResult") return { reachable: res.reachable };
     return { reachable: false };
   }
 
   /**
    * Non-streaming chat completion.
-   * Returns the full response once the model finishes generating.
+   * Returns the full response plus the `keyId` that serviced the call.
    *
    * @example
-   * const result = await vault.chat({
-   *   model: 'gpt-4o',
-   *   messages: [{ role: 'user', content: 'Hello' }],
-   *   tools: [{ type: 'function', function: { name: 'greet', parameters: {} } }],
-   * });
+   * const { completion, keyId } = await vault.chat({ messages });
    */
-  async chat(params: ChatParams): Promise<ChatCompletion> {
+  async chat(params: ChatParams): Promise<{ completion: ChatCompletion; keyId: string }> {
     const res = await this.send({
       type: "chat",
       ...params,
       max_tokens: params.max_tokens ?? (params as ChatStreamParams).maxTokens,
     });
-    if (res.type === "chatCompletion") return res.completion;
+    if (res.type === "chatCompletion") {
+      return { completion: res.completion, keyId: res.keyId };
+    }
     if (res.type === "error") {
       throw new Error(`[${res.code}] ${res.message}`);
     }
@@ -212,17 +193,8 @@ export class Keyquill {
   }
 
   /**
-   * Stream a chat completion. Returns an AsyncGenerator of StreamEvents.
-   *
-   * @example
-   * for await (const event of vault.chatStream({
-   *   model: 'claude-sonnet-4-20250514',
-   *   messages: [{ role: 'user', content: 'Hello' }],
-   *   tools: [{ type: 'function', function: { name: 'greet', parameters: {} } }],
-   * })) {
-   *   if (event.type === 'delta') console.log(event.text);
-   *   if (event.type === 'tool_call_delta') console.log(event.tool_calls);
-   * }
+   * Stream a chat completion.
+   * First event is `{ type: "start", keyId, provider, label }`.
    */
   async *chatStream(params: ChatStreamParams): AsyncGenerator<StreamEvent> {
     const id = await this.resolveExtensionId();
@@ -248,7 +220,6 @@ export class Keyquill {
     yield* portToStream(port, {
       type: "chatStream",
       ...params,
-      // Normalize maxTokens → max_tokens for the wire format
       max_tokens: params.max_tokens ?? params.maxTokens,
     });
   }
@@ -279,10 +250,8 @@ export class Keyquill {
   private async resolveExtensionId(): Promise<string | null> {
     if (this.extensionId) return this.extensionId;
 
-    // Try to detect from meta tag or well-known IDs
     const detected = detectExtensionId([]);
     if (detected) {
-      // Verify it's reachable
       const res = await sendExtensionMessage<VaultResponse>(detected, { type: "ping" }, 2000);
       if (res?.type === "pong") {
         this.extensionId = detected;

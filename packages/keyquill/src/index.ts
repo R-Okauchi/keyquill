@@ -39,9 +39,8 @@ export type {
   ToolChoice,
   // Response format
   ResponseFormat,
-  // Provider info
-  ProviderSummary,
-  RegisterKeyParams,
+  // Key info
+  KeySummary,
   // Request params
   ChatParams,
   ChatStreamParams,
@@ -56,4 +55,4 @@ export type {
   VaultRequest,
 } from "./types.js";
 
-export { ErrorCode } from "./types.js";
+export { ErrorCode, SDK_PROTOCOL_VERSION } from "./types.js";
