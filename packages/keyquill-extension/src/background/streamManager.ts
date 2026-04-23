@@ -69,7 +69,7 @@ export async function resolveKey(
  * Translate wire-level ChatParams (either v1 or v2 shape) into the
  * resolver's ResolverRequest. Prefers v2 fields when present, falls
  * back to translating v1 snake_case fields otherwise. This lets us
- * accept both SDK v1 (frozen at @keyquill@0.3.x) and SDK v2 (@keyquill@2)
+ * accept both SDK v1 (frozen at keyquill@0.3.x) and SDK v2 (keyquill@1.x)
  * clients simultaneously.
  */
 function toResolverRequest(

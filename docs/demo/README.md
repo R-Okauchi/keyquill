@@ -30,11 +30,11 @@ python3 -m http.server 8080 --directory docs
 
 ```html
 <script type="module">
-  import { Keyquill } from "https://esm.sh/keyquill@2";
+  import { Keyquill } from "https://esm.sh/keyquill@1";
 </script>
 ```
 
-We import directly from [esm.sh](https://esm.sh) so there's no build tooling. Pinned to major version `@2` so patch/minor updates flow automatically while breaking majors require an intentional bump.
+We import directly from [esm.sh](https://esm.sh) so there's no build tooling. Pinned to major version `@1` so patch/minor updates flow automatically while breaking majors require an intentional bump. (`keyquill@1.x` on npm carries the capability-first "v2 API" — see the note in the SDK README for the naming disambiguation.)
 
 ## SDK v2 usage in this demo
 
