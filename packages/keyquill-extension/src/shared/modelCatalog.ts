@@ -854,3 +854,15 @@ export function isOpenAIReasoning(model: ModelSpec): boolean {
     model.constraints?.temperatureMustBe === 1
   );
 }
+
+/**
+ * Cheapest catalog model for a given provider, measured by
+ * `outputPer1M`. Used as the final fallback when neither the policy nor
+ * the preset specifies a default. Returns null if the catalog has no
+ * entry for this provider.
+ */
+export function cheapestModelForProvider(provider: string): ModelSpec | null {
+  const candidates = ALL_MODELS.filter((m) => m.provider === provider);
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((a, b) => a.pricing.outputPer1M - b.pricing.outputPer1M)[0];
+}

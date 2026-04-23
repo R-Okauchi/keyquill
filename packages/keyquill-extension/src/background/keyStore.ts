@@ -108,18 +108,30 @@ function coerceV2Records(rows: LegacyV2Record[]): KeyRecord[] {
  *
  * - Sampling (temperature, topP) moves into `policy.sampling`
  * - reasoningEffort becomes an upper cap via `policy.budget.maxReasoningEffort`
+ * - `defaultModel` (when provided) seeds `policy.modelPolicy.defaultModel`
+ *   so the Policy-driven resolver doesn't need to fall back to the legacy
+ *   KeyRecord field.
  * - Every other policy field stays at its permissive default
  *
  * Result is equivalent to pre-v1.0 unrestricted pass-through: nothing
  * blocks, sampling defaults are honored when the developer omits them.
  */
-function synthesizePolicy(defaults: KeyDefaults | undefined): KeyPolicy {
+function synthesizePolicy(
+  defaults: KeyDefaults | undefined,
+  defaultModel?: string,
+): KeyPolicy {
   const sampling: { temperature?: number; topP?: number } = {};
   if (defaults?.temperature !== undefined) sampling.temperature = defaults.temperature;
   if (defaults?.topP !== undefined) sampling.topP = defaults.topP;
 
+  const modelPolicy =
+    defaultModel && defaultModel.trim().length > 0
+      ? { ...DEFAULT_KEY_POLICY.modelPolicy, defaultModel }
+      : DEFAULT_KEY_POLICY.modelPolicy;
+
   return {
     ...DEFAULT_KEY_POLICY,
+    modelPolicy,
     ...(Object.keys(sampling).length > 0 ? { sampling } : {}),
     ...(defaults?.reasoningEffort
       ? {
@@ -133,15 +145,35 @@ function synthesizePolicy(defaults: KeyDefaults | undefined): KeyPolicy {
 }
 
 /**
- * Ensure a record has a `policy` field. Returns the same object reference
- * if it already does; otherwise returns a new object with policy
- * synthesized from the legacy `defaults`.
+ * Ensure a record has a `policy` field populated with a modelPolicy that
+ * reflects the record's `defaultModel`. Two cases:
+ *
+ * 1. No policy yet (legacy pre-Phase-3 record) — synthesize from `defaults`
+ *    + `defaultModel`.
+ * 2. Policy exists but `modelPolicy.defaultModel` is missing (Phase 3–12
+ *    record) — backfill from `record.defaultModel`. This is the Phase 13a
+ *    migration path; once Phase 13d lands and we drop `KeyRecord.defaultModel`,
+ *    this branch becomes a no-op.
  */
 function ensurePolicy(record: KeyRecord): KeyRecord {
-  if (record.policy && typeof record.policyVersion === "number") return record;
+  if (record.policy && typeof record.policyVersion === "number") {
+    if (!record.policy.modelPolicy.defaultModel && record.defaultModel) {
+      return {
+        ...record,
+        policy: {
+          ...record.policy,
+          modelPolicy: {
+            ...record.policy.modelPolicy,
+            defaultModel: record.defaultModel,
+          },
+        },
+      };
+    }
+    return record;
+  }
   return {
     ...record,
-    policy: synthesizePolicy(record.defaults),
+    policy: synthesizePolicy(record.defaults, record.defaultModel),
     policyVersion: CURRENT_POLICY_VERSION,
   };
 }
@@ -309,9 +341,9 @@ export async function updateKey(input: UpdateKeyInput): Promise<KeyRecord | null
     delete (updated as { defaults?: KeyDefaults }).defaults;
   }
   // Sync derived policy fields (sampling + reasoning effort cap) whenever
-  // defaults change. Other policy fields (modelPolicy, budget caps,
-  // privacy) are user-owned and preserved — once the popup Policy tab
-  // lands in Phase 7, users edit those directly, not via defaults.
+  // defaults change. Other policy fields (budget caps, privacy) are
+  // user-owned and preserved — users edit those directly through the
+  // popup Policy tab, not via defaults.
   if (input.defaults !== undefined) {
     const resynthesized = synthesizePolicy(mergedDefaults);
     updated.policy = {
@@ -329,6 +361,23 @@ export async function updateKey(input: UpdateKeyInput): Promise<KeyRecord | null
     if (updated.policy.budget.maxReasoningEffort === undefined) {
       delete (updated.policy.budget as { maxReasoningEffort?: ReasoningEffort }).maxReasoningEffort;
     }
+    updated.policyVersion = CURRENT_POLICY_VERSION;
+  }
+  // Mirror a defaultModel change into `policy.modelPolicy.defaultModel` so
+  // the resolver's Tier-1 (key-default) path picks it up without falling
+  // back to the legacy field. A user who pins a different model via the
+  // Policy editor will have already saved through updatePolicy — they win
+  // on the next updateKey call only if the caller explicitly passes a new
+  // defaultModel here.
+  if (input.defaultModel !== undefined && input.defaultModel !== existing.defaultModel) {
+    const basePolicy = updated.policy ?? existing.policy ?? DEFAULT_KEY_POLICY;
+    updated.policy = {
+      ...basePolicy,
+      modelPolicy: {
+        ...basePolicy.modelPolicy,
+        defaultModel: input.defaultModel,
+      },
+    };
     updated.policyVersion = CURRENT_POLICY_VERSION;
   }
   if (updated.label.length === 0) {

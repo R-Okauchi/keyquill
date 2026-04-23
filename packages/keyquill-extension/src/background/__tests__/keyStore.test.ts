@@ -464,6 +464,92 @@ describe("keyStore v3 (active-key model)", () => {
       expect(after[0].policy?.sampling).toBeUndefined();
     });
 
+    it("synthesized policy seeds modelPolicy.defaultModel from addKey input.defaultModel", async () => {
+      await addKey({
+        provider: "openai",
+        label: "Work",
+        apiKey: "sk-w",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-5.4-pro",
+      });
+      const keys = await getKeys();
+      expect(keys[0].policy?.modelPolicy.defaultModel).toBe("gpt-5.4-pro");
+    });
+
+    it("backfills policy.modelPolicy.defaultModel on legacy records with a policy but no default", async () => {
+      storage["keyquill_keys"] = [
+        {
+          keyId: "k1",
+          provider: "openai",
+          label: "Legacy",
+          apiKey: "sk-k1",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-5.4-mini",
+          isActive: true,
+          policy: {
+            modelPolicy: { mode: "open", onViolation: "confirm" },
+            budget: { onBudgetHit: "warn" },
+            privacy: { requireHttps: true, logAuditEvents: true },
+            behavior: { autoFallback: true, maxRetries: 2, timeoutMs: 60_000 },
+          },
+          policyVersion: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ];
+      const keys = await getKeys();
+      expect(keys[0].policy?.modelPolicy.defaultModel).toBe("gpt-5.4-mini");
+      const persisted = (storage["keyquill_keys"] as Array<{
+        policy: { modelPolicy: { defaultModel?: string } };
+      }>)[0];
+      expect(persisted.policy.modelPolicy.defaultModel).toBe("gpt-5.4-mini");
+    });
+
+    it("does not overwrite modelPolicy.defaultModel when the user has already set one", async () => {
+      storage["keyquill_keys"] = [
+        {
+          keyId: "k1",
+          provider: "openai",
+          label: "Custom",
+          apiKey: "sk-k1",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-5.4-mini",
+          isActive: true,
+          policy: {
+            modelPolicy: {
+              mode: "allowlist",
+              allowedModels: ["gpt-5.4-pro"],
+              onViolation: "reject",
+              defaultModel: "gpt-5.4-pro",
+            },
+            budget: { onBudgetHit: "warn" },
+            privacy: { requireHttps: true, logAuditEvents: true },
+            behavior: { autoFallback: true, maxRetries: 2, timeoutMs: 60_000 },
+          },
+          policyVersion: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ];
+      const keys = await getKeys();
+      expect(keys[0].policy?.modelPolicy.defaultModel).toBe("gpt-5.4-pro");
+    });
+
+    it("updateKey(defaultModel) mirrors the new value into policy.modelPolicy.defaultModel", async () => {
+      const k = await addKey({
+        provider: "openai",
+        label: "Work",
+        apiKey: "sk-w",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-5.4-mini",
+      });
+      expect(k.policy?.modelPolicy.defaultModel).toBe("gpt-5.4-mini");
+      await updateKey({ keyId: k.keyId, defaultModel: "gpt-5.4-pro" });
+      const after = await getKeys();
+      expect(after[0].defaultModel).toBe("gpt-5.4-pro");
+      expect(after[0].policy?.modelPolicy.defaultModel).toBe("gpt-5.4-pro");
+    });
+
     it("updateKey preserves user-edited modelPolicy even when defaults change", async () => {
       // Seed a record that has both defaults AND a custom modelPolicy.
       storage["keyquill_keys"] = [

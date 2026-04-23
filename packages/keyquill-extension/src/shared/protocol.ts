@@ -133,6 +133,18 @@ export interface ModelPolicy {
   preferredPerCapability?: Partial<Record<Capability, string>>;
   /** What the broker does if the developer's request violates the mode. */
   onViolation: "reject" | "confirm";
+  /**
+   * Explicit default model override. When a request specifies neither
+   * `prefer.model` nor `requires[]`, the resolver picks this.
+   *
+   * Resolution chain when this is undefined:
+   *   1. provider preset's defaultModel (see presets.ts)
+   *   2. cheapest catalog model for this provider
+   *
+   * Intentionally a string (not constrained to Capability enum) so users
+   * can supply a catalog-unknown model (e.g., their own fine-tune).
+   */
+  defaultModel?: string;
 }
 
 export interface BudgetPolicy {
