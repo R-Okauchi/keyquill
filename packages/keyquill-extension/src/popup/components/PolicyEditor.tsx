@@ -1,12 +1,15 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type {
   IncomingRequest,
   KeyPolicy,
+  KeyRecord,
   OutgoingResponse,
   ReasoningEffort,
 } from "../../shared/protocol.js";
 import { DEFAULT_KEY_POLICY } from "../../shared/protocol.js";
 import { ext } from "../../shared/browser.js";
+import { ALL_MODELS, getModel } from "../../shared/modelCatalog.js";
+import { resolveKeyDefault } from "../../shared/keyDefault.js";
 
 function sendMessage(msg: IncomingRequest): Promise<OutgoingResponse> {
   return new Promise((resolve) => {
@@ -18,6 +21,15 @@ type Tab = "model" | "budget" | "privacy" | "sampling" | "behavior";
 
 interface Props {
   keyId: string;
+  /** Used to sort autocomplete — models for this provider surface first. */
+  provider: string;
+  /**
+   * The key's legacy `KeyRecord.defaultModel`. Shown as part of the
+   * effective-default preview so the user sees what the resolver would
+   * pick when `policy.modelPolicy.defaultModel` is blank. This prop goes
+   * away when Phase 13d drops the legacy field.
+   */
+  legacyDefaultModel?: string;
   initial?: KeyPolicy;
   onSaved: (policy: KeyPolicy) => void;
   onCancel: () => void;
@@ -47,7 +59,14 @@ function joinList(xs: string[] | undefined): string {
   return xs?.join("\n") ?? "";
 }
 
-export function PolicyEditor({ keyId, initial, onSaved, onCancel }: Props) {
+export function PolicyEditor({
+  keyId,
+  provider,
+  legacyDefaultModel,
+  initial,
+  onSaved,
+  onCancel,
+}: Props) {
   const [policy, setPolicy] = useState<KeyPolicy>(clone(initial ?? DEFAULT_KEY_POLICY));
   const [tab, setTab] = useState<Tab>("model");
   const [saving, setSaving] = useState(false);
@@ -57,6 +76,59 @@ export function PolicyEditor({ keyId, initial, onSaved, onCancel }: Props) {
     const next = clone(policy);
     f(next);
     setPolicy(next);
+  }
+
+  // Autocomplete options: provider's own models first (cheapest by
+  // output price), then everything else. Keeps the common case on top
+  // without hiding cross-provider alternatives that users sometimes
+  // want (e.g., Anthropic-compatible endpoint running OpenRouter).
+  const catalogOptions = useMemo(() => {
+    const own = ALL_MODELS.filter((m) => m.provider === provider).sort(
+      (a, b) => a.pricing.outputPer1M - b.pricing.outputPer1M,
+    );
+    const others = ALL_MODELS.filter((m) => m.provider !== provider).sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    return [...own, ...others];
+  }, [provider]);
+
+  // Effective default preview: what the resolver would pick right now
+  // given the (possibly unsaved) policy. Used as placeholder text when
+  // the user leaves the field blank.
+  const effectiveDefault = useMemo(() => {
+    const syntheticKey: KeyRecord = {
+      keyId,
+      provider,
+      label: "",
+      apiKey: "",
+      baseUrl: "",
+      defaultModel: legacyDefaultModel ?? "",
+      isActive: true,
+      policy,
+      policyVersion: 1,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    return resolveKeyDefault(syntheticKey);
+  }, [keyId, provider, legacyDefaultModel, policy]);
+
+  const defaultModelInput = policy.modelPolicy.defaultModel ?? "";
+  const catalogHit = defaultModelInput ? getModel(defaultModelInput) : null;
+  const isUnknownInCatalog = defaultModelInput !== "" && !catalogHit;
+  const allowedModels = policy.modelPolicy.allowedModels ?? [];
+  const needsAllowlistAdd =
+    defaultModelInput !== "" &&
+    (policy.modelPolicy.mode === "allowlist" ||
+      policy.modelPolicy.mode === "capability-only") &&
+    !allowedModels.includes(defaultModelInput);
+
+  function addDefaultToAllowlist() {
+    mut((p) => {
+      const next = p.modelPolicy.allowedModels ?? [];
+      if (defaultModelInput && !next.includes(defaultModelInput)) {
+        p.modelPolicy.allowedModels = [...next, defaultModelInput];
+      }
+    });
   }
 
   async function save() {
@@ -105,6 +177,51 @@ export function PolicyEditor({ keyId, initial, onSaved, onCancel }: Props) {
               <option value="capability-only">capability-only — user maps per-cap</option>
             </select>
           </label>
+          <label>
+            Default model
+            <input
+              type="text"
+              list={`catalog-models-${keyId}`}
+              placeholder={
+                effectiveDefault
+                  ? `(blank → ${effectiveDefault.id})`
+                  : "(no catalog fallback — enter a model ID)"
+              }
+              value={defaultModelInput}
+              onInput={(e) =>
+                mut((p) => {
+                  const v = (e.target as HTMLInputElement).value.trim();
+                  p.modelPolicy.defaultModel = v.length > 0 ? v : undefined;
+                })
+              }
+            />
+          </label>
+          <datalist id={`catalog-models-${keyId}`}>
+            {catalogOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.displayName} · {m.provider}
+              </option>
+            ))}
+          </datalist>
+          {isUnknownInCatalog && (
+            <div class="policy-editor__hint policy-editor__hint--warn">
+              "{defaultModelInput}" isn't in the catalog — cost estimates and
+              capability checks won't be available. Double-check the spelling.
+            </div>
+          )}
+          {needsAllowlistAdd && (
+            <div class="policy-editor__hint policy-editor__hint--warn">
+              "{defaultModelInput}" isn't in your allowlist below —
+              requests would be rejected / prompt confirmation.{" "}
+              <button
+                type="button"
+                class="policy-editor__inline-btn"
+                onClick={addDefaultToAllowlist}
+              >
+                Add to allowlist
+              </button>
+            </div>
+          )}
           {(policy.modelPolicy.mode === "allowlist" ||
             policy.modelPolicy.mode === "capability-only") && (
             <label>

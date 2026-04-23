@@ -41,13 +41,16 @@ import type {
 import {
   ALL_MODELS,
   type ModelSpec,
-  cheapestModelForProvider,
   estimateCost,
   findByCapabilities,
   getModel,
   matchesCapabilities,
 } from "../shared/modelCatalog.js";
-import { getPreset } from "../shared/presets.js";
+import { resolveKeyDefault } from "../shared/keyDefault.js";
+
+// Re-export so existing imports (tests + callers) keep working without a
+// mechanical path change.
+export { resolveKeyDefault };
 
 // ── Public types ───────────────────────────────────────
 
@@ -273,47 +276,6 @@ function estimateInputTokens(messages: ChatMessage[], tools: Tool[] | undefined)
   // Rough heuristic: ~4 chars per token (English average). Adequate for
   // pre-flight cost estimates; not a billing-grade tokeniser.
   return Math.ceil(chars / 4);
-}
-
-// ── Key default resolution ─────────────────────────────
-
-/**
- * Resolve the key's effective default model.
- *
- * Chain (highest priority first):
- *   1. Policy override — `key.policy.modelPolicy.defaultModel`
- *   2. Legacy record field — `key.defaultModel` (kept during the
- *      Phase 13a → 13d migration window; gets copied into the policy
- *      on first migrated read, see keyStore.ts).
- *   3. Preset default — `getPreset(key.provider).defaultModel`
- *   4. Catalog fallback — cheapest model in the catalog for this
- *      provider, ranked by `outputPer1M`.
- *   5. `null` if even the catalog has no entry (e.g., a custom provider
- *      with no preset and no registered models). Caller surfaces this
- *      as `unknown-model`.
- */
-export function resolveKeyDefault(key: KeyRecord): ModelSpec | null {
-  const policyDefault = key.policy?.modelPolicy.defaultModel;
-  if (policyDefault) {
-    const spec = getModel(policyDefault);
-    if (spec) return spec;
-    // Unknown model in policy — fall through to preset fallback rather
-    // than hard-rejecting, so a typo in policy doesn't break Tier 1.
-  }
-
-  // Legacy record-level defaultModel (pre-Phase-13 migration).
-  if (key.defaultModel) {
-    const spec = getModel(key.defaultModel);
-    if (spec) return spec;
-  }
-
-  const preset = getPreset(key.provider);
-  if (preset?.defaultModel) {
-    const spec = getModel(preset.defaultModel);
-    if (spec) return spec;
-  }
-
-  return cheapestModelForProvider(key.provider);
 }
 
 // ── Stage 1: Privacy ───────────────────────────────────
