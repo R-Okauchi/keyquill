@@ -304,6 +304,8 @@ function App() {
                 {isExpanded && expandedPanel === "policy" && (
                   <PolicyEditor
                     keyId={k.keyId}
+                    provider={k.provider}
+                    legacyDefaultModel={k.defaultModel}
                     initial={k.policy}
                     onSaved={async () => {
                       setExpandedKey(null);
