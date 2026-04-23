@@ -5,6 +5,7 @@ import type {
   OutgoingResponse,
 } from "../../shared/protocol.js";
 import { ext } from "../../shared/browser.js";
+import { getErrorMessage } from "../../shared/errors/index.js";
 
 function sendMessage(msg: IncomingRequest): Promise<OutgoingResponse> {
   return new Promise((resolve) => {
@@ -119,7 +120,10 @@ export function AuditPanel({ keyId, onClose }: Props) {
                   {e.reasoningTokens !== undefined && <> + {e.reasoningTokens}r</>}
                 </span>
                 {e.status !== "success" && (
-                  <span class="audit-row__status">
+                  <span
+                    class="audit-row__status"
+                    title={e.errorCode ? getErrorMessage(e.errorCode) ?? e.errorCode : undefined}
+                  >
                     {e.status}
                     {e.errorCode ? ` · ${e.errorCode}` : ""}
                   </span>

@@ -10,6 +10,7 @@ import type {
 } from "../shared/protocol.js";
 import { ext } from "../shared/browser.js";
 import { PRESETS, getPreset } from "../shared/presets.js";
+import { renderError } from "../shared/errors/index.js";
 import { PolicyEditor } from "./components/PolicyEditor.js";
 import { AuditPanel } from "./components/AuditPanel.js";
 import { SpendBar } from "./components/SpendBar.js";
@@ -123,7 +124,7 @@ function App() {
       ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
     });
     if (res.type === "error") {
-      setFormError(res.message);
+      setFormError(renderError(res.code, res.message));
       return;
     }
     setShowForm(false);
