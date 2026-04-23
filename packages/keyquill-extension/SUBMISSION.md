@@ -11,7 +11,7 @@ The v1.0 release introduces substantial new user-visible features:
 - **Policy editor** in the popup: per-key allowlist / denylist / budget caps / privacy rules / sampling defaults
 - **Audit ledger**: every request stored locally (90-day retention) with origin, model, tokens, and cost. Export to CSV
 - **Consent popup** now has a request-approval mode (model / cost / reason with once / always / reject)
-- **Capability-first SDK** (`keyquill@2`) — apps declare intent, user policy picks the model
+- **Capability-first SDK** (`keyquill@1.x`) — apps declare intent, user policy picks the model
 - **Localized error messages** (English + Japanese, auto-detected from browser UI language)
 
 All storage continues to live in `chrome.storage.session` (keys, ephemeral) and `chrome.storage.local` (bindings + policy + ledger). Still no analytics, telemetry, or Keyquill-operated backend. The update flow from 0.3.x is non-destructive — legacy `KeyDefaults` migrate to `KeyPolicy` automatically on first read.

@@ -46,7 +46,9 @@ npm install keyquill
 
 ### 2. Use in your app (v2 capability-first API)
 
-`keyquill@2` uses a **capability-first** API — the app declares what it needs, the user's policy picks the actual model. Three ergonomic tiers:
+`keyquill@1` uses a **capability-first** API — the app declares what it needs, the user's policy picks the actual model. Three ergonomic tiers:
+
+> **Naming note.** The capability-first API is internally called "v2 API" (distinct from the legacy snake-case "v1 API" that shipped as `keyquill@0.3.x`). On npm these two API shapes live at different major versions: `keyquill@0.3.x` = v1 API (frozen), `keyquill@1.x` = v2 API (current). The product-level "v1 / v2" label and the npm semver major are independent axes; every time you see `keyquill@1` below, it's the v2 capability-first shape.
 
 ```typescript
 import { Keyquill } from "keyquill";
@@ -250,9 +252,9 @@ type Capability =
   | "fast" | "cheap" | "multilingual" | "code";
 ```
 
-## Migrating from keyquill@1 → keyquill@2
+## Migrating from `keyquill@0.3.x` → `keyquill@1`
 
-v1 (`keyquill@0.3.x`) remains available on npm — pin it if you're not ready to migrate. v2 deletes v1 top-level fields in favour of the capability-first surface:
+The legacy v1 API (`keyquill@0.3.x`) remains available on npm — pin it if you're not ready to migrate. The capability-first v2 API (shipping as `keyquill@1`) deletes v1 top-level fields:
 
 | v1 (`@0.3.x`) | v2 (`@2`) |
 | --- | --- |
@@ -268,6 +270,12 @@ v1 (`keyquill@0.3.x`) remains available on npm — pin it if you're not ready to
 | `stop: [...]` | (removed — not commonly used, re-request if needed) |
 
 The extension (`keyquill-extension@1.0+`) accepts **both wire shapes simultaneously** via an internal translator. So you can migrate one app at a time, on your own schedule — existing v1 apps keep running unchanged against the same installed extension.
+
+```bash
+# Upgrade path
+npm install keyquill@1       # v2 capability-first API (current)
+npm install keyquill@0.3.2   # v1 legacy API (frozen — pin if migrating later)
+```
 
 ## Supported Providers
 
