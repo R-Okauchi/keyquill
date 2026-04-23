@@ -6,7 +6,6 @@ import type {
   OriginBinding,
   IncomingRequest,
   OutgoingResponse,
-  KeyDefaults,
 } from "../shared/protocol.js";
 import { ext } from "../shared/browser.js";
 import { PRESETS, getPreset } from "../shared/presets.js";
@@ -44,18 +43,15 @@ function App() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [expandedPanel, setExpandedPanel] = useState<"policy" | "audit" | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  // Add-key form fields (controlled so the preset dropdown can auto-fill
-  // base URL / default model). user edits remain stable after switching.
+  // Add-key form fields. Presets auto-fill baseUrl/defaultModel; only the
+  // `custom` preset surfaces them as user inputs. Sampling defaults and
+  // other policy tweaks are edited through the Policy editor after the
+  // key exists.
   const [formProvider, setFormProvider] = useState<string>(DEFAULT_PRESET_ID);
   const [formLabel, setFormLabel] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseUrl, setFormBaseUrl] = useState(PRESETS[0].baseUrl);
   const [formDefaultModel, setFormDefaultModel] = useState(PRESETS[0].defaultModel);
-  const [formTemperature, setFormTemperature] = useState<string>("");
-  const [formTopP, setFormTopP] = useState<string>("");
-  const [formReasoningEffort, setFormReasoningEffort] =
-    useState<"" | "minimal" | "low" | "medium" | "high">("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   async function loadKeys() {
     const res = await sendMessage({ type: "listKeys" });
@@ -78,10 +74,6 @@ function App() {
     setFormApiKey("");
     setFormBaseUrl(PRESETS[0].baseUrl);
     setFormDefaultModel(PRESETS[0].defaultModel);
-    setFormTemperature("");
-    setFormTopP("");
-    setFormReasoningEffort("");
-    setShowAdvanced(false);
     setFormError(null);
   }
 
@@ -104,16 +96,16 @@ function App() {
       setFormError("Label is required (e.g. Work, Personal).");
       return;
     }
-    const defaults: KeyDefaults = {};
-    if (formTemperature !== "") {
-      const t = Number(formTemperature);
-      if (!Number.isNaN(t)) defaults.temperature = t;
+    if (formProvider === "custom") {
+      if (!formBaseUrl.trim()) {
+        setFormError("Base URL is required for custom providers.");
+        return;
+      }
+      if (!formDefaultModel.trim()) {
+        setFormError("Default model is required for custom providers.");
+        return;
+      }
     }
-    if (formTopP !== "") {
-      const p = Number(formTopP);
-      if (!Number.isNaN(p)) defaults.topP = p;
-    }
-    if (formReasoningEffort !== "") defaults.reasoningEffort = formReasoningEffort;
     const res = await sendMessage({
       type: "addKey",
       provider: formProvider,
@@ -121,7 +113,6 @@ function App() {
       apiKey: formApiKey,
       baseUrl: formBaseUrl,
       defaultModel: formDefaultModel,
-      ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
     });
     if (res.type === "error") {
       setFormError(renderError(res.code, res.message));
@@ -374,91 +365,33 @@ function App() {
               />
             </label>
 
-            <button
-              type="button"
-              class="form__toggle"
-              onClick={() => setShowAdvanced((v) => !v)}
-              aria-expanded={showAdvanced}
-            >
-              {showAdvanced ? "▾" : "▸"} Advanced
-            </button>
-
-            {showAdvanced && (
-              <div class="form__advanced">
+            {formProvider === "custom" && (
+              <div class="form__custom-fields">
                 <label>
-                  Base URL
+                  Base URL *
                   <input
                     type="url"
+                    required
+                    placeholder="https://api.example.com/v1"
                     value={formBaseUrl}
                     onInput={(e) => setFormBaseUrl((e.target as HTMLInputElement).value)}
                   />
                 </label>
                 <label>
-                  Model
+                  Model *
                   <input
                     type="text"
+                    required
+                    placeholder="vendor-specific id"
                     value={formDefaultModel}
-                    list={`models-${formProvider}`}
-                    placeholder={
-                      getPreset(formProvider)?.defaultModel || "vendor-specific id"
-                    }
                     autoComplete="off"
                     onInput={(e) => setFormDefaultModel((e.target as HTMLInputElement).value)}
                   />
-                  {(getPreset(formProvider)?.models.length ?? 0) > 0 && (
-                    <datalist id={`models-${formProvider}`}>
-                      {getPreset(formProvider)!.models.map((m) => (
-                        <option key={m} value={m} />
-                      ))}
-                    </datalist>
-                  )}
                 </label>
-                <label>
-                  Temperature
-                  <input
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    placeholder="(provider default)"
-                    value={formTemperature}
-                    onInput={(e) => setFormTemperature((e.target as HTMLInputElement).value)}
-                  />
-                </label>
-                <label>
-                  Top P
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    placeholder="(provider default)"
-                    value={formTopP}
-                    onInput={(e) => setFormTopP((e.target as HTMLInputElement).value)}
-                  />
-                </label>
-                <label>
-                  Reasoning effort
-                  <select
-                    value={formReasoningEffort}
-                    onChange={(e) =>
-                      setFormReasoningEffort(
-                        (e.target as HTMLSelectElement).value as
-                          | ""
-                          | "minimal"
-                          | "low"
-                          | "medium"
-                          | "high",
-                      )
-                    }
-                  >
-                    <option value="">(none / model default)</option>
-                    <option value="minimal">minimal</option>
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                  </select>
-                </label>
+                <p class="form__hint">
+                  For preset providers, these values are pre-filled. Edit the
+                  default model for any key later via its Policy &gt; Model tab.
+                </p>
               </div>
             )}
 
