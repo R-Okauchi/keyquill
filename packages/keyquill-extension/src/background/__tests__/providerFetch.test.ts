@@ -86,7 +86,7 @@ describe("buildProviderFetch (OpenAI path)", () => {
     expect(parsed.reasoning_effort).toBe("high");
   });
 
-  it("max_completion_tokens is forwarded when set", () => {
+  it("max_completion_tokens is forwarded when set (and max_tokens is dropped)", () => {
     const { body } = buildProviderFetch(
       mkKey({ provider: "openai" }),
       {
@@ -97,6 +97,35 @@ describe("buildProviderFetch (OpenAI path)", () => {
     );
     const parsed = JSON.parse(body);
     expect(parsed.max_completion_tokens).toBe(8000);
+    expect(parsed.max_tokens).toBeUndefined();
+  });
+
+  it("sends only max_completion_tokens when caller passes BOTH on a non-reasoning model", () => {
+    // Gemini OpenAI-compat rejects bodies with both fields; OpenAI tightened
+    // the same check for gpt-4o-mini. Keep the body to one field.
+    const { body } = buildProviderFetch(
+      mkKey({ provider: "openai", defaultModel: "gpt-4o-mini" }),
+      {
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 32,
+        max_completion_tokens: 32,
+      },
+      false,
+    );
+    const parsed = JSON.parse(body);
+    expect(parsed.max_completion_tokens).toBe(32);
+    expect(parsed.max_tokens).toBeUndefined();
+  });
+
+  it("sends only max_tokens when caller omits max_completion_tokens on non-reasoning model", () => {
+    const { body } = buildProviderFetch(
+      mkKey({ provider: "openai", defaultModel: "gpt-4o-mini" }),
+      { messages: [{ role: "user", content: "hi" }], max_tokens: 100 },
+      false,
+    );
+    const parsed = JSON.parse(body);
+    expect(parsed.max_tokens).toBe(100);
+    expect(parsed.max_completion_tokens).toBeUndefined();
   });
 
   it("applies key.defaults.temperature when request omits it", () => {

@@ -10,11 +10,6 @@ export interface Target {
   env: string;
   baseUrl: string;
   chatModels: string[];
-  /**
-   * Pro/reasoning models under tight max_output_tokens return empty
-   * content with finish_reason=length — still a successful request.
-   */
-  expectEmptyContentFor?: RegExp;
 }
 
 export const INTEGRATION_TARGETS: Target[] = [
@@ -29,7 +24,6 @@ export const INTEGRATION_TARGETS: Target[] = [
       "o3-mini",
       "gpt-5.4-pro",
     ],
-    expectEmptyContentFor: /pro$/,
   },
   {
     id: "anthropic",
