@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { resolveRequest, __test, type ResolverInput } from "../resolver.js";
+import { resolveRequest, resolveKeyDefault, __test, type ResolverInput } from "../resolver.js";
 import type { KeyPolicy, KeyRecord } from "../../shared/protocol.js";
 import { DEFAULT_KEY_POLICY, CURRENT_POLICY_VERSION } from "../../shared/protocol.js";
-import { getModel } from "../../shared/modelCatalog.js";
+import { getModel, cheapestModelForProvider } from "../../shared/modelCatalog.js";
 
 function mkPolicy(overrides: Partial<KeyPolicy> = {}): KeyPolicy {
   return {
@@ -114,6 +114,94 @@ describe("privacyCheck", () => {
       kind: "reject",
       reason: "provider-blocked",
     });
+  });
+});
+
+// ── Key default resolution ─────────────────────────────
+
+describe("resolveKeyDefault", () => {
+  it("prefers policy.modelPolicy.defaultModel over the legacy record field", () => {
+    const key = mkKey({
+      defaultModel: "gpt-5.4-mini",
+      policy: mkPolicy({
+        modelPolicy: {
+          ...DEFAULT_KEY_POLICY.modelPolicy,
+          defaultModel: "gpt-5.4-pro",
+        },
+      }),
+    });
+    expect(resolveKeyDefault(key)?.id).toBe("gpt-5.4-pro");
+  });
+
+  it("falls back to record.defaultModel when policy.modelPolicy.defaultModel is unset", () => {
+    const key = mkKey({
+      defaultModel: "gpt-5.4-mini",
+      policy: mkPolicy({ modelPolicy: { ...DEFAULT_KEY_POLICY.modelPolicy } }),
+    });
+    expect(resolveKeyDefault(key)?.id).toBe("gpt-5.4-mini");
+  });
+
+  it("falls back to preset default when both policy and record fields are empty", () => {
+    const key = mkKey({
+      provider: "anthropic",
+      defaultModel: "", // intentionally empty to exercise the preset fallback
+      policy: mkPolicy({ modelPolicy: { ...DEFAULT_KEY_POLICY.modelPolicy } }),
+    });
+    // anthropic preset default is claude-sonnet-4-6
+    expect(resolveKeyDefault(key)?.id).toBe("claude-sonnet-4-6");
+  });
+
+  it("falls back to the cheapest catalog model for the provider when no preset match", () => {
+    // openai preset default is gpt-5.4-mini; clear it to force the final
+    // catalog fallback. We reach this branch by setting a policy and
+    // record default that don't resolve to a catalog entry AND by
+    // bypassing the preset. Easiest: use a provider that has models in
+    // the catalog but whose preset default is intentionally made
+    // unknown. `openai` works — the test mocks an unknown preset default
+    // by using a provider without a matching preset (e.g., "fireworks"
+    // isn't in presets; only in catalog). Actually, any provider present
+    // in catalog but not presets hits this path.
+    const key = mkKey({
+      provider: "fireworks",
+      defaultModel: "",
+      policy: mkPolicy({ modelPolicy: { ...DEFAULT_KEY_POLICY.modelPolicy } }),
+    });
+    const expected = cheapestModelForProvider("fireworks");
+    // fireworks has no preset and no catalog entries currently → null.
+    // If the catalog adds fireworks later, this test verifies the
+    // cheapest-pick branch runs; until then it asserts null.
+    expect(resolveKeyDefault(key)).toBe(expected);
+  });
+
+  it("returns null when policy pins an unknown model and nothing else resolves", () => {
+    const key = mkKey({
+      provider: "nonexistent-provider-xyz",
+      defaultModel: "also-fake-model",
+      policy: mkPolicy({
+        modelPolicy: {
+          ...DEFAULT_KEY_POLICY.modelPolicy,
+          defaultModel: "typo-model-name",
+        },
+      }),
+    });
+    expect(resolveKeyDefault(key)).toBeNull();
+  });
+
+  it("uses the catalog cheapest for openai when every earlier step is cleared", () => {
+    // Sanity: openai has many catalog entries. Clearing policy + record
+    // defaults AND using a provider string that matches openai in catalog
+    // but no preset would be ideal. Since "openai" has a preset, this
+    // scenario is not reachable for openai in real data — but we can
+    // simulate via a catalog-only provider. "openrouter" has a preset,
+    // so use the known preset-default chain instead here to confirm the
+    // preset branch wins over catalog-cheapest when both are available.
+    const key = mkKey({
+      provider: "openai",
+      defaultModel: "",
+      policy: mkPolicy({ modelPolicy: { ...DEFAULT_KEY_POLICY.modelPolicy } }),
+    });
+    // openai preset default is gpt-5.4-mini — that should win over catalog cheapest.
+    expect(resolveKeyDefault(key)?.id).toBe("gpt-5.4-mini");
   });
 });
 

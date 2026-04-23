@@ -41,11 +41,13 @@ import type {
 import {
   ALL_MODELS,
   type ModelSpec,
+  cheapestModelForProvider,
   estimateCost,
   findByCapabilities,
   getModel,
   matchesCapabilities,
 } from "../shared/modelCatalog.js";
+import { getPreset } from "../shared/presets.js";
 
 // ── Public types ───────────────────────────────────────
 
@@ -273,6 +275,47 @@ function estimateInputTokens(messages: ChatMessage[], tools: Tool[] | undefined)
   return Math.ceil(chars / 4);
 }
 
+// ── Key default resolution ─────────────────────────────
+
+/**
+ * Resolve the key's effective default model.
+ *
+ * Chain (highest priority first):
+ *   1. Policy override — `key.policy.modelPolicy.defaultModel`
+ *   2. Legacy record field — `key.defaultModel` (kept during the
+ *      Phase 13a → 13d migration window; gets copied into the policy
+ *      on first migrated read, see keyStore.ts).
+ *   3. Preset default — `getPreset(key.provider).defaultModel`
+ *   4. Catalog fallback — cheapest model in the catalog for this
+ *      provider, ranked by `outputPer1M`.
+ *   5. `null` if even the catalog has no entry (e.g., a custom provider
+ *      with no preset and no registered models). Caller surfaces this
+ *      as `unknown-model`.
+ */
+export function resolveKeyDefault(key: KeyRecord): ModelSpec | null {
+  const policyDefault = key.policy?.modelPolicy.defaultModel;
+  if (policyDefault) {
+    const spec = getModel(policyDefault);
+    if (spec) return spec;
+    // Unknown model in policy — fall through to preset fallback rather
+    // than hard-rejecting, so a typo in policy doesn't break Tier 1.
+  }
+
+  // Legacy record-level defaultModel (pre-Phase-13 migration).
+  if (key.defaultModel) {
+    const spec = getModel(key.defaultModel);
+    if (spec) return spec;
+  }
+
+  const preset = getPreset(key.provider);
+  if (preset?.defaultModel) {
+    const spec = getModel(preset.defaultModel);
+    if (spec) return spec;
+  }
+
+  return cheapestModelForProvider(key.provider);
+}
+
 // ── Stage 1: Privacy ───────────────────────────────────
 
 function privacyCheck(input: ResolverInput): ResolverOutput | null {
@@ -385,8 +428,8 @@ function selectModel(input: ResolverInput): ResolverOutput | ModelSelection {
     // Prefer user's configured preferredPerCapability if any capability matches.
     const preferred = findPreferredPerCapability(implicitCaps, matches, policy);
     if (preferred) return { model: preferred, reason: "capability-match" };
-    // Fallback: if the key's defaultModel meets the capabilities, use it.
-    const keyDefault = getModel(key.defaultModel);
+    // Fallback: if the key's resolved default meets the capabilities, use it.
+    const keyDefault = resolveKeyDefault(key);
     if (keyDefault && matches.includes(keyDefault)) {
       return { model: keyDefault, reason: "default" };
     }
@@ -394,13 +437,13 @@ function selectModel(input: ResolverInput): ResolverOutput | ModelSelection {
     return { model: matches[0], reason: "capability-match" };
   }
 
-  // Tier-1: no capability hint. Use the key's default model.
-  const def = getModel(key.defaultModel);
+  // Tier-1: no capability hint. Walk the default resolution chain.
+  const def = resolveKeyDefault(key);
   if (!def) {
     return {
       kind: "reject",
       reason: "unknown-model",
-      message: `Key's defaultModel "${key.defaultModel}" is not in the catalog.`,
+      message: `Could not resolve a default model for key "${key.label}" (provider: ${key.provider}).`,
     };
   }
   if (!bypassModel) {
