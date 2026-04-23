@@ -15,6 +15,7 @@ import type { ChatParams, ChatCompletion, KeyRecord, StreamEvent } from "../../s
 import {
   buildProviderFetch,
   buildProviderTestFetch,
+  isOpenAIReasoningModel,
   parseAnthropicCompletion,
   parseOpenAiResponsesCompletion,
 } from "../providerFetch.js";
@@ -115,7 +116,11 @@ for (const t of INTEGRATION_TARGETS) {
     }, 30_000);
 
     for (const model of t.chatModels) {
-      const expectEmpty = t.expectEmptyContentFor?.test(model) ?? false;
+      // OpenAI reasoning models (o-series, gpt-5 family incl. -pro) can
+      // consume the entire `max_completion_tokens: 32` budget on internal
+      // reasoning tokens, returning content="" with finish_reason=length.
+      // The request succeeded end-to-end — assert reachability, not content.
+      const tolerant = t.id === "openai" && isOpenAIReasoningModel(model);
 
       it(`non-streaming ${model}: succeeds`, async () => {
         const p = buildProviderFetch(key(t, apiKey, model), REQUEST, false);
@@ -130,9 +135,7 @@ for (const t of INTEGRATION_TARGETS) {
         }
         const data = (await r.json()) as Record<string, unknown>;
         const completion = parseCompletionFor(p.endpoint, data);
-        if (expectEmpty) {
-          // pro/reasoning under tight budget may return empty content
-          // with finish_reason=length — still counts as a working request.
+        if (tolerant) {
           expect(completion.finish_reason).toBeDefined();
         } else {
           expect(completion.content?.length ?? 0).toBeGreaterThan(0);
@@ -142,10 +145,8 @@ for (const t of INTEGRATION_TARGETS) {
       it(`streaming ${model}: emits ≥1 delta or terminates cleanly`, async () => {
         const p = buildProviderFetch(key(t, apiKey, model), REQUEST, true);
         const { deltas, events } = await runStreamToCompletion(p);
-        // Either there are text deltas, OR the stream completed (length
-        // truncation on a 32-token reasoning-model budget is acceptable).
         const ended = events.some((e) => e.type === "done" || e.type === "error");
-        if (expectEmpty) {
+        if (tolerant) {
           expect(ended).toBe(true);
         } else {
           expect(deltas.length > 0 || ended).toBe(true);

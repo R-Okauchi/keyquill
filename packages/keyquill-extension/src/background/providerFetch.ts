@@ -194,14 +194,16 @@ function buildOpenAiPassthrough(
     stream,
   };
   // Reasoning-family models reject `max_tokens` and require
-  // `max_completion_tokens`. Legacy models accept `max_tokens`.
+  // `max_completion_tokens`. For non-reasoning models, prefer
+  // `max_completion_tokens` when explicitly set — Gemini OpenAI-compat
+  // and newer OpenAI endpoints reject sending both (OpenAI treats them
+  // as aliases for non-reasoning models, so picking one works).
   if (isOpenAIReasoningModel(params.model)) {
     body.max_completion_tokens = params.max_completion_tokens ?? params.max_tokens;
+  } else if (params.max_completion_tokens !== undefined) {
+    body.max_completion_tokens = params.max_completion_tokens;
   } else {
     body.max_tokens = params.max_tokens;
-    if (params.max_completion_tokens !== undefined) {
-      body.max_completion_tokens = params.max_completion_tokens;
-    }
   }
   if (params.temperature !== undefined) body.temperature = params.temperature;
   if (params.top_p !== undefined) body.top_p = params.top_p;
