@@ -69,6 +69,66 @@
         gap: 6px;
       }
 
+      /* Phase 17b: current-tab context panel */
+      .current-tab {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+      }
+      .current-tab__label {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #94a3b8;
+      }
+      .current-tab__host {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1a1a2e;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .current-tab__status {
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .current-tab__status--ok {
+        color: #1e293b;
+      }
+      .current-tab__status--muted {
+        color: #64748b;
+      }
+      .current-tab__status code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        background: #e2e8f0;
+        padding: 0 4px;
+        border-radius: 3px;
+      }
+      .current-tab__provider {
+        color: #64748b;
+        font-weight: 400;
+      }
+      .current-tab__actions {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .current-tab__picker {
+        padding: 3px 7px;
+        border: 1px solid #d1d5db;
+        border-radius: 5px;
+        font-size: 11px;
+        background: #fff;
+      }
+
       /* v2: multi-key UI */
       .section {
         margin-bottom: 16px;
