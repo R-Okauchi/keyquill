@@ -32,11 +32,41 @@ function hostOf(origin: string): string {
 
 const DEFAULT_PRESET_ID = PRESETS[0].id;
 
+/**
+ * Info about the tab that was active when the popup opened. `origin`
+ * is the URL's origin for http(s) pages; empty string for
+ * chrome:// / about: / file: (i.e. pages the extension cannot service);
+ * `null` means the tab URL was not readable at all (new-tab page,
+ * detached popup, permissions issue).
+ */
+interface CurrentTabInfo {
+  url: string;
+  origin: string;
+  host: string;
+}
+
+async function readCurrentTab(): Promise<CurrentTabInfo | null> {
+  try {
+    const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
+    const url = tab?.url ?? "";
+    if (!url) return null;
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { url, origin: "", host: parsed.hostname || url };
+    }
+    return { url, origin: parsed.origin, host: parsed.hostname };
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const [keys, setKeys] = useState<KeySummary[]>([]);
   const [bindings, setBindings] = useState<OriginBinding[]>([]);
+  const [currentTab, setCurrentTab] = useState<CurrentTabInfo | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingBinding, setEditingBinding] = useState<string | null>(null);
+  const [currentTabEditing, setCurrentTabEditing] = useState(false);
   const [testResultKey, setTestResultKey] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -65,6 +95,18 @@ function App() {
   useEffect(() => {
     loadKeys();
     loadBindings();
+    readCurrentTab().then(setCurrentTab);
+    // Refresh if the user clicks another tab while the popup is open,
+    // or if the current tab navigates mid-session.
+    const refresh = () => {
+      readCurrentTab().then(setCurrentTab);
+    };
+    ext.tabs.onActivated.addListener(refresh);
+    ext.tabs.onUpdated.addListener(refresh);
+    return () => {
+      ext.tabs.onActivated.removeListener(refresh);
+      ext.tabs.onUpdated.removeListener(refresh);
+    };
   }, []);
 
   function resetForm() {
@@ -151,6 +193,7 @@ function App() {
   async function handleSetBinding(origin: string, keyId: string) {
     await sendMessage({ type: "setBinding", origin, keyId });
     setEditingBinding(null);
+    setCurrentTabEditing(false);
     await loadBindings();
   }
 
@@ -167,11 +210,81 @@ function App() {
     keysByProvider.set(k.provider, list);
   }
 
+  // Current-tab context: which site is the popup looking at, and what
+  // key (if any) services it. `origin` is empty for chrome:// / about:
+  // / file: URLs — those pages can't talk to Keyquill, so the panel
+  // reflects that explicitly.
+  const currentBinding =
+    currentTab && currentTab.origin
+      ? bindings.find((b) => b.origin === currentTab.origin)
+      : undefined;
+  const currentBoundKey = currentBinding
+    ? keys.find((k) => k.keyId === currentBinding.keyId)
+    : undefined;
+
   return (
     <div>
       <h1>
         <img class="icon" src="/icons/icon-48.png" alt="" /> Keyquill
       </h1>
+
+      {currentTab && (
+        <div class="current-tab">
+          <div class="current-tab__label">Current tab</div>
+          <div class="current-tab__host">{currentTab.host}</div>
+          {currentTab.origin === "" ? (
+            <div class="current-tab__status current-tab__status--muted">
+              This page isn't a Keyquill target (non-http URL).
+            </div>
+          ) : currentBoundKey ? (
+            <>
+              <div class="current-tab__status current-tab__status--ok">
+                Using <strong>{currentBoundKey.label}</strong>
+                <span class="current-tab__provider"> · {currentBoundKey.provider}</span>
+              </div>
+              <div class="current-tab__actions">
+                {currentTabEditing ? (
+                  <select
+                    class="current-tab__picker"
+                    onChange={(e) => {
+                      const v = (e.target as HTMLSelectElement).value;
+                      if (v) handleSetBinding(currentTab.origin, v);
+                    }}
+                  >
+                    <option value="">Pick a key…</option>
+                    {keys.map((k) => (
+                      <option key={k.keyId} value={k.keyId}>
+                        {k.label} ({k.provider})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <button
+                    class="btn btn--ghost btn--sm"
+                    onClick={() => setCurrentTabEditing(true)}
+                  >
+                    Change key
+                  </button>
+                )}
+                <button
+                  class="btn btn--ghost btn--sm"
+                  onClick={() => handleRevokeBinding(currentTab.origin)}
+                >
+                  Disconnect
+                </button>
+              </div>
+            </>
+          ) : currentBinding ? (
+            <div class="current-tab__status current-tab__status--muted">
+              Bound to a key that no longer exists. Disconnect and reconnect.
+            </div>
+          ) : (
+            <div class="current-tab__status current-tab__status--muted">
+              Not connected. The app can call <code>quill.connect()</code> to request access.
+            </div>
+          )}
+        </div>
+      )}
 
       <section class="section">
         <h2 class="section__title">Your keys ({keys.length})</h2>
@@ -358,10 +471,21 @@ function App() {
         )}
       </section>
 
-      {bindings.length > 0 && (
-        <section class="section">
-          <h2 class="section__title">Connected sites ({bindings.length})</h2>
-          {bindings.map((b) => {
+      {/* The current tab's binding is already surfaced by the top panel,
+          so pull it out of the "other sites" list to avoid duplication. */}
+      {(() => {
+        const otherBindings = currentTab?.origin
+          ? bindings.filter((b) => b.origin !== currentTab.origin)
+          : bindings;
+        if (otherBindings.length === 0) return null;
+        const sectionTitle =
+          currentBinding && bindings.length !== otherBindings.length
+            ? `Other connected sites (${otherBindings.length})`
+            : `Connected sites (${otherBindings.length})`;
+        return (
+          <section class="section">
+            <h2 class="section__title">{sectionTitle}</h2>
+            {otherBindings.map((b) => {
             const host = hostOf(b.origin);
             const bound = keys.find((k) => k.keyId === b.keyId);
             const isEditing = editingBinding === b.origin;
@@ -412,8 +536,9 @@ function App() {
               </div>
             );
           })}
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       <p class="hint">
         Keys live in browser session memory only. They're cleared when you close the browser and
