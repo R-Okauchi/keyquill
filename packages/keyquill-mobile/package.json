@@ -58,7 +58,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@capacitor/core": "^7.0.0"
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/preferences": "^7.0.0"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
