@@ -12,6 +12,13 @@ export type {
   RelayProviderAllowlistEntry,
   RelayPolicy,
   RelayStreamEvent,
+  // Broker types (Phase 18a-1)
+  Capability,
+  Endpoint,
+  ModelConstraints,
+  ModelPricing,
+  ModelSpec,
+  Tone,
 } from "./types.js";
 export {
   defaultPolicy,
@@ -21,3 +28,18 @@ export {
   checkMonthlyBudget,
   requiresBiometric,
 } from "./policy.js";
+// Broker helpers (Phase 18a-1) — exposed alongside the legacy
+// microunit-based policy module. Not yet wired into the chatStream
+// surface; that lands in 18a-3.
+export {
+  ALL_CAPABILITIES,
+  ALL_MODELS,
+  CATALOG_EFFECTIVE_DATE,
+  MODEL_CATALOG,
+  cheapestModelForProvider,
+  findByCapabilities,
+  getModel,
+  isOpenAIReasoning,
+  isResponsesEndpoint,
+  matchesCapabilities,
+} from "./types.js";
