@@ -1,17 +1,24 @@
 import { WebPlugin } from "@capacitor/core";
 import type { SecureRelayPlugin } from "./definitions.js";
 import type { RelayPolicy, RelayProviderInfo } from "./types.js";
+import { getErrorMessage } from "./errors/index.js";
 
 /**
  * Web fallback for SecureRelay.
  * All methods throw — secure relay is only available on native platforms.
  * This aligns with ADR-003 Option A (web = deterministic-only).
+ *
+ * The error message uses the localized `NOT_NATIVE` code so callers
+ * see the message in the device's UI language (en / ja today).
  */
 export class SecureRelayWeb extends WebPlugin implements SecureRelayPlugin {
   private unsupported(): never {
-    throw new Error(
-      "SecureRelay is only available on native platforms. Use the mobile app for AI features.",
-    );
+    const message =
+      getErrorMessage("NOT_NATIVE") ??
+      "Keyquill is only available on native iOS and Android builds.";
+    const err = new Error(message);
+    (err as Error & { code?: string }).code = "NOT_NATIVE";
+    throw err;
   }
 
   async registerKey(): Promise<void> {
