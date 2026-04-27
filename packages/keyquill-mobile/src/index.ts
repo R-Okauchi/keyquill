@@ -1,11 +1,85 @@
 import { registerPlugin } from "@capacitor/core";
 import type { SecureRelayPlugin } from "./definitions.js";
+import type { ResolveInput, ResolveResult } from "./resolver.js";
+import { resolve } from "./resolver.js";
+import type { KeyPolicy } from "./types.js";
 
 const SecureRelay = registerPlugin<SecureRelayPlugin>("SecureRelay", {
   web: () => import("./web.js").then((m) => new m.SecureRelayWeb()),
 });
 
 export { SecureRelay };
+
+/**
+ * Capability-first wrapper around `SecureRelay.chatStream` (Phase 18a-3).
+ *
+ * Sits on top of the legacy native chatStream: queries the registered
+ * keys via `listProviders()`, resolves the caller's intent
+ * (`requires` / `tone` / `prefer`) into a concrete provider, then
+ * dispatches to native. Native still uses each registered key's
+ * `defaultModel`; the resolver picks among already-registered keys
+ * rather than overriding model per request (that lands in 18d/18e
+ * when the native bridge is extended).
+ *
+ * Returns the `streamId` from native plus the resolver's metadata
+ * (`resolvedProvider`, `resolvedModel`, `reason`) so callers know
+ * which key serviced the request.
+ *
+ * Throws when the resolver rejects (no providers registered, model
+ * outside allowlist, etc). Use `resolve()` directly if you want a
+ * non-throwing surface.
+ */
+export interface ResolveAndChatStreamInput extends ResolveInput {
+  messages: Array<{ role: string; content: string }>;
+  systemPrompt: string;
+  maxTokens?: number;
+  /** Per-key policy. Defaults to DEFAULT_KEY_POLICY when omitted. */
+  policy?: KeyPolicy;
+}
+
+export interface ResolveAndChatStreamResult {
+  streamId: string;
+  resolvedProvider: string;
+  resolvedModel: string;
+  reason: Extract<ResolveResult, { kind: "ready" }>["reason"];
+}
+
+export async function resolveAndChatStream(
+  input: ResolveAndChatStreamInput,
+): Promise<ResolveAndChatStreamResult> {
+  const { providers } = await SecureRelay.listProviders();
+  const decision = resolve(
+    {
+      requires: input.requires,
+      tone: input.tone,
+      prefer: input.prefer,
+    },
+    providers,
+    input.policy,
+  );
+  if (decision.kind === "reject") {
+    throw new Error(`[${decision.reason}] ${decision.message}`);
+  }
+  const { streamId } = await SecureRelay.chatStream({
+    provider: decision.provider,
+    messages: input.messages,
+    systemPrompt: input.systemPrompt,
+    maxTokens: input.maxTokens,
+  });
+  return {
+    streamId,
+    resolvedProvider: decision.provider,
+    resolvedModel: decision.model.id,
+    reason: decision.reason,
+  };
+}
+
+export { resolve } from "./resolver.js";
+export type {
+  ResolveInput,
+  ResolveResult,
+  ResolveReason,
+} from "./resolver.js";
 export type { SecureRelayPlugin, SecureRelayEvents } from "./definitions.js";
 export type {
   RelayProviderInfo,
