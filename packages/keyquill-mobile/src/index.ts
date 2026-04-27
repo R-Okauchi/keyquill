@@ -80,6 +80,17 @@ export type {
   ResolveResult,
   ResolveReason,
 } from "./resolver.js";
+
+// Error codes + i18n (Phase 18b)
+export {
+  ERROR_CODES,
+  ERRORS_EN,
+  ERRORS_JA,
+  getErrorMessage,
+  isKnownErrorCode,
+  renderError,
+} from "./errors/index.js";
+export type { ErrorCode, Locale } from "./errors/index.js";
 export type { SecureRelayPlugin, SecureRelayEvents } from "./definitions.js";
 export type {
   RelayProviderInfo,
