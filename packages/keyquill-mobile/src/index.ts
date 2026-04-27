@@ -91,6 +91,21 @@ export {
   renderError,
 } from "./errors/index.js";
 export type { ErrorCode, Locale } from "./errors/index.js";
+
+// Audit ledger (Phase 18c) — persists to @capacitor/preferences by
+// default; tests + custom-storage callers can supply their own via
+// `setLedgerStore`.
+export {
+  appendEntry,
+  clearAll,
+  clearByProvider,
+  exportCSV,
+  getDailySpend,
+  getMonthSpend,
+  queryByProvider,
+  setLedgerStore,
+} from "./ledger.js";
+export type { LedgerEntry, LedgerStore } from "./ledger.js";
 export type { SecureRelayPlugin, SecureRelayEvents } from "./definitions.js";
 export type {
   RelayProviderInfo,
