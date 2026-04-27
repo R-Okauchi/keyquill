@@ -19,7 +19,16 @@ export type {
   ModelPricing,
   ModelSpec,
   Tone,
+  // Broker KeyPolicy (Phase 18a-2)
+  KeyPolicy,
+  ModelPolicy,
+  BudgetPolicy,
+  PrivacyPolicy,
+  SamplingPolicy,
+  BehaviorPolicy,
+  ReasoningEffort,
 } from "./types.js";
+export { DEFAULT_KEY_POLICY, CURRENT_POLICY_VERSION } from "./types.js";
 export {
   defaultPolicy,
   validateBaseUrl,
