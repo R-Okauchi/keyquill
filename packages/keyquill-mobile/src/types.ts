@@ -5,6 +5,45 @@
  * can be published to npm with only `@capacitor/core` as a peer.
  */
 
+// Re-exports of broker types so consumers can `import { Capability, ModelSpec, getModel } from "keyquill-mobile"`.
+// Phase 18a-1 introduces these alongside the legacy types; Phases 18a-2
+// and 18a-3 build a TS-side resolver on top.
+//
+// Note: `estimateCost` is *not* re-exported here because the legacy
+// microunit-based `policy.estimateCost` is still the public surface
+// through Phases 18a-c. The catalog's USD-based `estimateCost` is
+// callable via `import { estimateCost } from "./modelCatalog.js"` from
+// inside the package, and will become the public estimate in Phase
+// 18f when the legacy policy module retires.
+export type {
+  Capability,
+  Endpoint,
+  ModelConstraints,
+  ModelPricing,
+  ModelSpec,
+} from "./modelCatalog.js";
+export {
+  ALL_CAPABILITIES,
+  ALL_MODELS,
+  CATALOG_EFFECTIVE_DATE,
+  MODEL_CATALOG,
+  cheapestModelForProvider,
+  findByCapabilities,
+  getModel,
+  isOpenAIReasoning,
+  isResponsesEndpoint,
+  matchesCapabilities,
+} from "./modelCatalog.js";
+
+/**
+ * Behavioural abstraction over temperature. Resolvers map this to a
+ * concrete value per model class (e.g., reasoning models pin
+ * `temperatureMustBe = 1`, chat models use 0.0 / 0.7 / 1.0+ for
+ * precise / balanced / creative). Lives here for now; once the
+ * mobile-side resolver lands in Phase 18a-3 it may move.
+ */
+export type Tone = "precise" | "balanced" | "creative";
+
 /** A registered LLM provider as surfaced by `listProviders()`. */
 export interface RelayProviderInfo {
   provider: string;
