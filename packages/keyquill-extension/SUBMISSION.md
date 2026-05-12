@@ -110,20 +110,27 @@ is the historical fallback for hotfixes or when CI is unavailable.
 `.github/workflows/extension-release.yml` runs lint + test, then publishes
 to both Chrome Web Store and Firefox AMO when a matching tag is pushed.
 
-1. Bump `version` in `public/manifest.json` (must be incremented for each upload).
-2. `pnpm changeset` to record the change (extension is in the `ignore` list, so this only touches its own CHANGELOG, not npm publication).
-3. Commit + merge the manifest bump to `main`.
-4. Tag and push:
+1. Bump `version` in `public/manifest.json` and `packages/keyquill-extension/package.json` (must be incremented for each upload).
+2. Commit + merge the manifest bump to `main`.
+3. Tag and push:
    ```bash
    git tag keyquill-extension-v<X.Y.Z>      # MUST match manifest.json
    git push origin keyquill-extension-v<X.Y.Z>
    ```
-5. The workflow verifies tag ↔ manifest version, builds, lints, tests,
+4. The workflow verifies tag ↔ manifest version, builds, lints, tests,
    then uploads to both stores in parallel. Chrome upload uses
    `chrome-webstore-upload-cli --auto-publish`; Firefox uses
    `web-ext sign --channel=listed` (AMO review queue handles approval).
 
-Required GitHub Secrets (in the `extension-release` environment):
+> ⚠️ **Do not create a changeset for an extension-only release.**
+> `keyquill-extension` is in `.changeset/config.json`'s `ignore` list,
+> so `changeset version` produces an empty diff for extension-only
+> changesets — which then crashes the `release.yml` action when it
+> tries to open a Version Packages PR with no commits. Bump the
+> manifest directly; changesets are only for the npm-published
+> packages (`keyquill`, `keyquill-mobile`, `keyquill-relay`).
+
+Required GitHub Secrets (in the repository):
 
 - `CWS_EXTENSION_ID` — 32-char Chrome Web Store extension ID
 - `CWS_CLIENT_ID` / `CWS_CLIENT_SECRET` / `CWS_REFRESH_TOKEN` — Google
