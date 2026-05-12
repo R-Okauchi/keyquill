@@ -310,10 +310,16 @@ describe("selectModel", () => {
   });
 
   it("honors preferredPerCapability", () => {
+    // preferredPerCapability must point to a model the key can actually
+    // call; capability search is scoped to the key's provider so picking
+    // a cross-provider pin would yield no match.
     const input = {
       ...BASE_INPUT,
       request: { ...BASE_INPUT.request, requires: ["vision" as const] },
       key: mkKey({
+        provider: "anthropic",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultModel: "claude-haiku-4-5",
         policy: mkPolicy({
           modelPolicy: {
             mode: "open",
@@ -380,6 +386,96 @@ describe("selectModel", () => {
     };
     const result = __test.selectModel(input);
     expect(result).toMatchObject({ kind: "consent-required", reason: "model-outside-allowlist" });
+  });
+
+  // ── Regression: capability search must not cross provider boundaries.
+  // A Gemini key paired with an OpenAI catalog model would 404 at the
+  // provider. The resolver must filter candidates to the key's own
+  // provider before walking the capability index. These tests use a
+  // denylist policy on the key's own default so the keyDefault fallback
+  // can't short-circuit the search — forcing the "pick first match"
+  // branch where the bug originally lived.
+
+  it("capability search stays within the key's provider (gemini)", () => {
+    const input = {
+      ...BASE_INPUT,
+      request: { ...BASE_INPUT.request, requires: ["streaming" as const] },
+      key: mkKey({
+        provider: "gemini",
+        baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+        defaultModel: "gemini-2.5-flash",
+        policy: mkPolicy({
+          modelPolicy: {
+            mode: "denylist",
+            deniedModels: ["gemini-2.5-flash"],
+            onViolation: "reject",
+          },
+        }),
+      }),
+    };
+    const result = __test.selectModel(input);
+    if ("kind" in result) throw new Error("unexpected reject");
+    expect(result.model.provider).toBe("gemini");
+    expect(result.reason).toBe("capability-match");
+  });
+
+  it("capability search stays within the key's provider (anthropic)", () => {
+    const input = {
+      ...BASE_INPUT,
+      request: { ...BASE_INPUT.request, requires: ["vision" as const] },
+      key: mkKey({
+        provider: "anthropic",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultModel: "claude-haiku-4-5",
+        policy: mkPolicy({
+          modelPolicy: {
+            mode: "denylist",
+            deniedModels: ["claude-haiku-4-5"],
+            onViolation: "reject",
+          },
+        }),
+      }),
+    };
+    const result = __test.selectModel(input);
+    if ("kind" in result) throw new Error("unexpected reject");
+    expect(result.model.provider).toBe("anthropic");
+    expect(result.model.capabilities).toContain("vision");
+  });
+
+  it("rejects when no model in the key's provider satisfies the capability set", () => {
+    // No groq model in the catalog lists the `vision` capability, so
+    // scoping to the groq provider yields zero matches. Before the fix
+    // this would have silently picked an OpenAI vision model.
+    const input = {
+      ...BASE_INPUT,
+      request: { ...BASE_INPUT.request, requires: ["vision" as const] },
+      key: mkKey({
+        provider: "groq",
+        baseUrl: "https://api.groq.com/openai/v1",
+        defaultModel: "llama-3.3-70b-versatile",
+      }),
+    };
+    const result = __test.selectModel(input);
+    expect(result).toMatchObject({ kind: "reject", reason: "no-model-matches-capabilities" });
+  });
+
+  it("prefer.provider can override the key's provider (caller takes responsibility)", () => {
+    // Key is openai, but the caller explicitly asks for anthropic.
+    // This is Tier-3 territory: we surface the hint instead of forcing
+    // the key's provider, on the assumption the caller knows what it's
+    // doing (e.g. a multi-key fan-out flow).
+    const input = {
+      ...BASE_INPUT,
+      request: {
+        ...BASE_INPUT.request,
+        requires: ["streaming" as const],
+        prefer: { provider: "anthropic" },
+      },
+      key: mkKey(),
+    };
+    const result = __test.selectModel(input);
+    if ("kind" in result) throw new Error("unexpected reject");
+    expect(result.model.provider).toBe("anthropic");
   });
 });
 

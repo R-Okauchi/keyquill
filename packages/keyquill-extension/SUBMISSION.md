@@ -102,8 +102,39 @@ pnpm --filter keyquill-extension zip:firefox   # keyquill-extension-firefox.zip
 
 ## Update flow for subsequent releases
 
+Two paths — pick one. The automated path is the default; the manual path
+is the historical fallback for hotfixes or when CI is unavailable.
+
+### Automated (CI — recommended)
+
+`.github/workflows/extension-release.yml` runs lint + test, then publishes
+to both Chrome Web Store and Firefox AMO when a matching tag is pushed.
+
 1. Bump `version` in `public/manifest.json` (must be incremented for each upload).
 2. `pnpm changeset` to record the change (extension is in the `ignore` list, so this only touches its own CHANGELOG, not npm publication).
-3. `pnpm --filter keyquill-extension build && zip:chrome && zip:firefox`.
-4. Chrome: upload the new zip to the existing listing → submit.
-5. Firefox: `pnpm --filter keyquill-extension sign:firefox` handles upload + sign.
+3. Commit + merge the manifest bump to `main`.
+4. Tag and push:
+   ```bash
+   git tag keyquill-extension-v<X.Y.Z>      # MUST match manifest.json
+   git push origin keyquill-extension-v<X.Y.Z>
+   ```
+5. The workflow verifies tag ↔ manifest version, builds, lints, tests,
+   then uploads to both stores in parallel. Chrome upload uses
+   `chrome-webstore-upload-cli --auto-publish`; Firefox uses
+   `web-ext sign --channel=listed` (AMO review queue handles approval).
+
+Required GitHub Secrets (in the `extension-release` environment):
+
+- `CWS_EXTENSION_ID` — 32-char Chrome Web Store extension ID
+- `CWS_CLIENT_ID` / `CWS_CLIENT_SECRET` / `CWS_REFRESH_TOKEN` — Google
+  Cloud OAuth credentials for the Chrome Web Store API
+- `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` — Firefox AMO API key + secret
+
+### Manual fallback
+
+1. Bump `version` in `public/manifest.json`.
+2. `pnpm --filter keyquill-extension build && zip:chrome && zip:firefox`.
+3. Chrome: upload the new zip to the existing listing → submit (or run
+   `pnpm --filter keyquill-extension upload:chrome` with the four `CWS_*`
+   env vars set locally).
+4. Firefox: `pnpm --filter keyquill-extension sign:firefox` handles upload + sign.

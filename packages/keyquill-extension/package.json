@@ -1,6 +1,6 @@
 {
   "name": "keyquill-extension",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Keyquill browser extension — Manifest V3 BYOK wallet for Chrome and Firefox. Distributed via Chrome Web Store and Firefox AMO; not published to npm.",
   "type": "module",
@@ -17,11 +17,13 @@
     "test:all": "vitest run --passWithNoTests",
     "zip:chrome": "pnpm build && cd dist-chrome && zip -r ../keyquill-extension-chrome.zip . -x '*.DS_Store' -x '__MACOSX*'",
     "zip:firefox": "pnpm build:firefox && cd dist-firefox && zip -r ../keyquill-extension-firefox.zip . -x '*.DS_Store' -x '__MACOSX*'",
-    "sign:firefox": "web-ext sign --source-dir=dist-firefox --api-key=$WEB_EXT_API_KEY --api-secret=$WEB_EXT_API_SECRET --channel=listed"
+    "sign:firefox": "web-ext sign --source-dir=dist-firefox --api-key=$WEB_EXT_API_KEY --api-secret=$WEB_EXT_API_SECRET --channel=listed",
+    "upload:chrome": "chrome-webstore-upload upload --source keyquill-extension-chrome.zip --extension-id $CWS_EXTENSION_ID --client-id $CWS_CLIENT_ID --client-secret $CWS_CLIENT_SECRET --refresh-token $CWS_REFRESH_TOKEN --auto-publish"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.6",
     "@types/chrome": "^0.1.39",
+    "chrome-webstore-upload-cli": "^3.3.2",
     "preact": "^10.26.6",
     "typescript": "^5.8.3",
     "vite": "^6.4.1",
