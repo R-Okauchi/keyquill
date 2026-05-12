@@ -1,0 +1,118 @@
+name: Extension Release
+
+# Publishes keyquill-extension to Chrome Web Store and Firefox AMO.
+# Triggered by a `keyquill-extension-v<X.Y.Z>` tag whose suffix must match
+# public/manifest.json's `version`. Independent of npm publish (release.yml).
+
+on:
+  push:
+    tags:
+      - "keyquill-extension-v*"
+
+concurrency: extension-release-${{ github.ref }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.versions.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag and manifest versions
+        id: versions
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#keyquill-extension-v}"
+          MANIFEST_VERSION=$(node -p "require('./packages/keyquill-extension/public/manifest.json').version")
+          echo "Tag version:      $TAG_VERSION"
+          echo "Manifest version: $MANIFEST_VERSION"
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::Tag (${TAG_VERSION}) does not match public/manifest.json (${MANIFEST_VERSION}). Bump the manifest before tagging."
+            exit 1
+          fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter keyquill-extension lint
+
+      - run: pnpm --filter keyquill-extension test
+
+  chrome:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter keyquill-extension zip:chrome
+
+      - name: Upload to Chrome Web Store
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: pnpm --filter keyquill-extension upload:chrome
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: keyquill-extension-chrome
+          path: packages/keyquill-extension/keyquill-extension-chrome.zip
+
+  firefox:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter keyquill-extension build:firefox
+
+      - name: Sign & submit to AMO
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: pnpm --filter keyquill-extension sign:firefox
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: keyquill-extension-firefox
+          path: packages/keyquill-extension/web-ext-artifacts/*.xpi

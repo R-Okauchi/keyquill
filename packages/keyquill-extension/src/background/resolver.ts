@@ -375,7 +375,16 @@ function selectModel(input: ResolverInput): ResolverOutput | ModelSelection {
 
   // Tier-2: capability-driven selection.
   if (implicitCaps.length > 0) {
-    const providerFilter = request.prefer?.provider ? [request.prefer.provider] : undefined;
+    // Filter to models the *selected key can actually call*. Without this,
+    // a Gemini key can be paired with an OpenAI catalog model (catalog
+    // declaration order) and the request 404s at the provider. An explicit
+    // `prefer.provider` hint still wins so callers can opt out, but it
+    // must agree with the key's provider — silently routing an OpenAI
+    // model through a Gemini endpoint is never correct.
+    const providerFilter: readonly string[] =
+      request.prefer?.provider && request.prefer.provider !== key.provider
+        ? [request.prefer.provider]
+        : [key.provider];
     const matches = findByCapabilities(implicitCaps, providerFilter).filter((m) => {
       // Honor policy filters unless the user has granted a consent bypass.
       return bypassModel ? true : !gateModel(m, policy);
@@ -384,7 +393,7 @@ function selectModel(input: ResolverInput): ResolverOutput | ModelSelection {
       return {
         kind: "reject",
         reason: "no-model-matches-capabilities",
-        message: `No allowed model satisfies all capabilities: ${implicitCaps.join(", ")}.`,
+        message: `No allowed model for provider "${providerFilter[0]}" satisfies all capabilities: ${implicitCaps.join(", ")}.`,
       };
     }
     // Prefer user's configured preferredPerCapability if any capability matches.
